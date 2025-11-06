@@ -73,3 +73,8 @@ git push and restricting large files from being uploaded to git.
 ### Changed
 - 🔧 Code cleanup and structure compliance
 
+
+## [v0.4.5] – 2025-11-06
+
+- 🔖 Version 0.4.5 - Automated release
+
