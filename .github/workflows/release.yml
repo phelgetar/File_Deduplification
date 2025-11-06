@@ -8,13 +8,28 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: ⬇️ Checkout Code
         uses: actions/checkout@v4
 
-      - name: Create GitHub Release
+      - name: 📝 Extract Latest Changelog
+        id: changelog
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "📦 Extracting changelog for $TAG_NAME"
+
+          # Extract section from CHANGELOG.md
+          BODY=$(awk "/^## \\[$TAG_NAME\\]/,/^## \\[/" CHANGELOG.md | head -n -1)
+          echo "$BODY" > release_body.md
+
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat release_body.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: 🚀 Publish GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          generate_release_notes: true
+          body: "${{ steps.changelog.outputs.body }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

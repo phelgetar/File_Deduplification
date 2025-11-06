@@ -20,7 +20,7 @@
 ### Security
 - `.env` now securely stores OpenAI API key and MySQL credentials.
 
-### 🔁 Core System Update — Version 0.3.0 (2025-11-04)
+### 🔁 Core System Update — Version 0.4.0 (2025-11-04)
 
 - Integrated MySQL-based deduplication cache and operation logging.
 - Enhanced ZIP packaging to flatten files correctly during deploy.
@@ -28,3 +28,8 @@
 - Introduced directory-level filtering using regex in main.py.
 - rollback_core.sh script added to enable easy restoration of last known good state.
 - CHANGELOG.md created for versioned tracking of features and patches.
+
+## [v0.4.2] – 2025-11-04
+
+- Core enhancements and MySQL caching added
+- Syntax check added to update scripts
