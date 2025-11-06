@@ -5,17 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="cb20fa1f-9130-4751-8267-ccaa50b3992d" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/File_Deduplification.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/core/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/file_info.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/tests/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/db.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/db.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/rollback_core.sh" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/rollback_core.sh" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -32,6 +24,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "phelgetar"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/phelgetar/File_Deduplification.git",
+    "accountId": "4d189769-d13e-473e-8f1f-286b55232d48"
+  }
+}]]></component>
   <component name="ProjectColorInfo"><![CDATA[{
   "associatedIndex": 1
 }]]></component>
@@ -50,7 +54,8 @@
     "RunOnceActivity.git.unshallow": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/canadytw/PycharmProjects/File_Deduplification/core"
+    "last_opened_file_path": "/Users/canadytw/PycharmProjects/File_Deduplification/core",
+    "settings.editor.selected.configurable": "preferences.lookFeel"
   },
   "keyToStringList": {
     "com.intellij.ide.scratch.ScratchImplUtil$2/New Scratch File": [
@@ -64,6 +69,7 @@
       <recent name="$PROJECT_DIR$/tests" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/scripts" />
       <recent name="$PROJECT_DIR$/core" />
       <recent name="$PROJECT_DIR$/tests" />
     </key>
