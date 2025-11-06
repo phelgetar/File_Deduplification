@@ -39,7 +39,6 @@
 
 Append this entry at the top of `CHANGELOG.md` if your latest version is `v0.4.2`:
 
-```markdown
 ## [v0.4.2] – 2025-11-06
 
 - 🗑️ Removed `.scan_cache.json` from Git history
@@ -47,11 +46,30 @@ Append this entry at the top of `CHANGELOG.md` if your latest version is `v0.4.2
 - ✅ Completed version/release workflow integration
 ---
 
+## ✅ `CHANGELOG.md` Update (if not already committed)
+
 Append this entry at the top of `CHANGELOG.md` if your latest version is `v0.4.3`:
 
-```markdown
 ## [v0.4.3] – 2025-11-06
 
 - 🗑️ Removed `.scan_cache.json` from Git history
 - 🧹 Cleaned up repo and added 'force_clean_push.sh', 'validate_large_files.sh'; both assist in cleaning up the 
 git push and restricting large files from being uploaded to git.
+---
+
+## [v0.4.5] - 2025-11-06
+### Added
+- ✅ Added all `utils` modules:
+  - `utils/cache.py`
+  - `utils/notifications.py`
+  - `utils/versioning.py`
+  - `utils/gui.py`
+  - `utils/__init__.py`
+- ✅ Restored `core/organizer.py` with planning logic
+
+### Fixed
+- 🐛 Resolved missing imports and broken features due to incomplete files
+
+### Changed
+- 🔧 Code cleanup and structure compliance
+

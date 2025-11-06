@@ -172,3 +172,28 @@ git push -u origin main
 make bump               # patch bump (0.3.0 → 0.3.1)
 make bump TYPE=minor    # minor bump (0.3.0 → 0.4.0)
 make bump TYPE=major    # major bump (0.3.0 → 1.0.0)
+```
+
+## v0.4.5 Highlights
+
+- Modularized utilities in `utils/`
+- Restored `core/organizer.py` for file organization logic
+- Enhanced internal structure and patching automation
+
+Upgrade with:
+```bash
+git pull origin main
+```
+
+---
+
+### 📦 Git Commands for Release
+
+```bash
+# Bump version tag
+git tag -a v0.4.5 -m "📦 Release version 0.4.5 - Utilities and Organizer restoration"
+git push origin v0.4.5
+
+# Optional GitHub release trigger via CLI/API
+gh release create v0.4.5 --title "v0.4.5 - Utilities + Organizer Restoration" --notes-file CHANGELOG.md
+```
