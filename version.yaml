@@ -1,0 +1,13 @@
+# version.yaml
+version: 0.4.1
+project: File Deduplication
+created: 2025-09-28
+last_modified: 2025-11-04
+maintainer: Tim Canady
+revision_history:
+  - version: 0.4.1
+    date: 2025-11-04
+    notes: Auto-synced update, hashing and scanning modules implemented
+  - version: 0.1.1
+    date: 2025-09-28
+    notes: Initial project structure defined

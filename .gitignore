@@ -1,0 +1,17 @@
+# .gitignore for File Deduplication Project
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+build/
+dist/
+.eggs/
+*.egg-info/
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.bak
+tests/test_data/

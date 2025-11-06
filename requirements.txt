@@ -1,0 +1,8 @@
+# requirements.txt
+openai>=1.0.0
+pymupdf>=1.22.5
+python-docx>=1.0.0
+mutagen>=1.45.1
+exiftool>=0.1.6
+rich>=13.5.2
+python-dotenv>=1.0.0
