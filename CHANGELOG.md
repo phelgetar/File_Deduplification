@@ -78,3 +78,8 @@ git push and restricting large files from being uploaded to git.
 
 - 🔖 Version 0.4.5 - Automated release
 
+
+## [v0.4.6] – 2025-11-06
+
+- 🔖 Version 0.4.6 - Automated release
+
