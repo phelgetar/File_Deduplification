@@ -31,11 +31,20 @@ release:
 
 changelog:
 	@echo "📘 Updating CHANGELOG.md..."
-	@echo "\n## [v$(VERSION)] – $(DATE)" >> CHANGELOG.md
-	@echo "\n- $(TAG_MSG)\n" >> CHANGELOG.md
-	@git add CHANGELOG.md
-	@git commit -m "📝 Update CHANGELOG for v$(VERSION)" || echo "No changelog changes"
-	@git push origin main
+	python3 scripts/gen_changelog.py > CHANGELOG_LAST.md
+	python3 scripts/gen_changelog.py >> CHANGELOG.md
+	git add CHANGELOG.md
+	$(MAKE) check_size
+	git commit -m "📝 Update CHANGELOG for v$(VERSION)" || true
+	git push origin main
+
+# changelog:
+# 	@echo "📘 Updating CHANGELOG.md..."
+# 	@echo "\n## [v$(VERSION)] – $(DATE)" >> CHANGELOG.md
+# 	@echo "\n- $(TAG_MSG)\n" >> CHANGELOG.md
+# 	@git add CHANGELOG.md
+# 	@git commit -m "📝 Update CHANGELOG for v$(VERSION)" || echo "No changelog changes"
+# 	@git push origin main
 
 bump:
 	@echo "🔧 Bumping $(TYPE) version..."
