@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
+# File: scripts/bump_version.py
 
-import sys
 import yaml
 from pathlib import Path
 
-type_ = sys.argv[1] if len(sys.argv) > 1 else "patch"
 version_file = Path("version.yaml")
-data = yaml.safe_load(version_file.read_text())
-major, minor, patch = map(int, data["version"].split("."))
 
-if type_ == "major":
-    major += 1
-    minor = patch = 0
-elif type_ == "minor":
-    minor += 1
-    patch = 0
-else:
+def bump_patch():
+    with version_file.open() as f:
+        data = yaml.safe_load(f)
+
+    major, minor, patch = map(int, data["version"].split("."))
     patch += 1
+    new_version = f"{major}.{minor}.{patch}"
+    data["version"] = new_version
 
-new_version = f"{major}.{minor}.{patch}"
-data["version"] = new_version
-version_file.write_text(yaml.dump(data))
-print(f"✅ Updated version to {new_version}")
+    with version_file.open("w") as f:
+        yaml.dump(data, f)
+
+    print(f"\U0001F527 Bumped patch version to {new_version}")
+
+def main():
+    bump_patch()
+
+if __name__ == "__main__":
+    main()
