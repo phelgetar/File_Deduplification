@@ -1,39 +1,24 @@
-# File: scripts/gen_changelog.py
+#!/usr/bin/env python3
+import re
 
-import subprocess
-from datetime import datetime
-from pathlib import Path
+CHANGELOG_PATH = "CHANGELOG.md"
 
-import changelog
+def extract_latest_changelog():
+    with open(CHANGELOG_PATH, "r") as f:
+        content = f.read()
 
-from read_version import read_version
+    match = re.split(r'^## \[v?[\d\.]+\]', content, flags=re.MULTILINE)
+    headers = re.findall(r'^## \[v?([\d\.]+)\]', content, flags=re.MULTILINE)
 
-changelog_file = Path("CHANGELOG.md")
-
-def generate_changelog():
-    version = read_version()
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    title = f"## [v{version}] - {date_str}\n"
-
-    log = subprocess.run(
-        ["git", "log", "--pretty=format:* %s", "--no-merges", "HEAD~10..HEAD"],
-        capture_output=True,
-        text=True,
-        check=True
-    ).stdout
-
-    changelog_entry = f"\n{title}\n{log}\n"
-
-    if changelog_file.exists():
-        original = changelog_file.read_text()
-        changelog_file.write_text(changelog_entry + original)
-    else:
-        changelog_file.write_text(changelog_entry)
-
-    print(f"\U0001F4DD Changelog updated for v{version}")
+    if len(headers) >= 1 and len(match) >= 2:
+        latest = match[1].strip()
+        version = headers[0]
+        return f"## [v{version}]\n{latest}"
+    return "⚠️ No recent changelog entry found."
 
 if __name__ == "__main__":
-    generate_changelog()
+    changelog = extract_latest_changelog()
+    print(changelog)
 
-with open("CHANGELOG_LAST.md", "w") as f:
-    f.write(changelog)
+    with open("CHANGELOG_LAST.md", "w") as f:
+        f.write(changelog)
