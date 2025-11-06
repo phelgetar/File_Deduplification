@@ -45,3 +45,13 @@ Append this entry at the top of `CHANGELOG.md` if your latest version is `v0.4.2
 - 🗑️ Removed `.scan_cache.json` from Git history
 - 🧹 Cleaned up repo and added `.gitignore` for cache files
 - ✅ Completed version/release workflow integration
+---
+
+Append this entry at the top of `CHANGELOG.md` if your latest version is `v0.4.3`:
+
+```markdown
+## [v0.4.3] – 2025-11-06
+
+- 🗑️ Removed `.scan_cache.json` from Git history
+- 🧹 Cleaned up repo and added 'force_clean_push.sh', 'validate_large_files.sh'; both assist in cleaning up the 
+git push and restricting large files from being uploaded to git.
