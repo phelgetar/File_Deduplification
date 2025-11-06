@@ -100,7 +100,6 @@ python main.py /Volumes/home --execute
 
 ---
 ## 🗂 Project Structure
----
 
 ```
 file_deduplicator/
@@ -164,3 +163,12 @@ git push -u origin main
 - SMTP notifications
 - Full GUI file browser
 - File-type-specific metadata analyzers
+
+## 🔁 Developer Release Workflow
+
+### 🔼 Bump Version
+
+```bash
+make bump               # patch bump (0.3.0 → 0.3.1)
+make bump TYPE=minor    # minor bump (0.3.0 → 0.4.0)
+make bump TYPE=major    # major bump (0.3.0 → 1.0.0)
