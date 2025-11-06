@@ -8,13 +8,26 @@ TYPE ?= patch
 .PHONY: release bump changelog
 
 release:
-	@echo "🚀 Releasing version $(VERSION)..."
-	@git add .
-	@git commit -m "📦 Release version $(VERSION)"
-	@git tag -a v$(VERSION) -m "$(TAG_MSG)"
-	@git push origin main
-	@git push origin v$(VERSION)
-	@make changelog
+	@echo "🚀 Releasing version $(shell python scripts/read_version.py)..."
+	@echo "🔎 Checking staged files for size violations (>100MB)..."
+	@if git diff --cached --name-only | xargs -I{} find {} -type f -size +100M | grep -q .; then \
+		echo "❌ One or more files exceed GitHub’s 100MB limit."; exit 1; \
+	else \
+		echo "✅ All staged files are under the 100MB limit."; \
+	fi
+	git commit -am "📦 Release version $(shell python scripts/read_version.py)" || true
+	git push origin main
+	@echo "📘 Creating GitHub release..."
+	gh release create v$(shell python scripts/read_version.py) --title "v$(shell python scripts/read_version.py)" --notes-file CHANGELOG_LAST.md
+
+# release:
+# 	@echo "🚀 Releasing version $(VERSION)..."
+# 	@git add .
+# 	@git commit -m "📦 Release version $(VERSION)"
+# 	@git tag -a v$(VERSION) -m "$(TAG_MSG)"
+# 	@git push origin main
+# 	@git push origin v$(VERSION)
+# 	@make changelog
 
 changelog:
 	@echo "📘 Updating CHANGELOG.md..."

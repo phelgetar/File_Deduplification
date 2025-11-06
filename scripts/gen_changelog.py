@@ -3,6 +3,9 @@
 import subprocess
 from datetime import datetime
 from pathlib import Path
+
+import changelog
+
 from read_version import read_version
 
 changelog_file = Path("CHANGELOG.md")
@@ -31,3 +34,6 @@ def generate_changelog():
 
 if __name__ == "__main__":
     generate_changelog()
+
+with open("CHANGELOG_LAST.md", "w") as f:
+    f.write(changelog)
