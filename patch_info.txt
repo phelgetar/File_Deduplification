@@ -1,3 +1,0 @@
-Patch: UtilsFix
-Includes: cache.py, notifications.py, versioning.py, gui.py
-Version: 0.4.4
