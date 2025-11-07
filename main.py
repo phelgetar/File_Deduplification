@@ -26,7 +26,7 @@ from core.organizer import plan_organization
 from core.previewer import preview_plan, print_tree_structure
 from core.executor import execute_plan
 from utils.cache import load_cache, save_cache
-from utils.notifications import send_notification
+from utils.notifications import send_slack_notification
 from utils.versioning import get_version
 from utils.gui import launch_gui
 from pathlib import Path
@@ -86,7 +86,7 @@ def main():
         print(f"📄 Dry run log saved: {log_name}")
 
     if args.notify:
-        send_notification(args.notify, f"Dry run complete with {len(plan)} operations.")
+        send_slack_notification(args.notify, f"Dry run complete with {len(plan)} operations.")
 
     if args.gui:
         launch_gui(plan)
