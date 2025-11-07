@@ -1,3 +1,4 @@
+requests
 changelog
 # requirements.txt
 openai>=1.0.0
