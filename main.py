@@ -12,6 +12,7 @@
 # Last Modified: 2025-11-06 by Tim Canady
 #
 # Revision History:
+# - 0.4.5 (2025-11-06): Implemented Slack notifications
 # - 0.4.4 (2025-11-06): Restore full CLI and fix scan_directory param
 ###################################################################
 

@@ -5,7 +5,6 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="cb20fa1f-9130-4751-8267-ccaa50b3992d" name="Changes" comment=" - Updated scripts/rollback_core.sh with syntax to rollback to previous versions&#10;- Updated core/db.py to use a ddata base for hashes and files for large directories">
-      <change afterPath="$PROJECT_DIR$/scripts/update_main_slack_support.sh" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
     </list>
@@ -53,6 +52,7 @@
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "SHELLCHECK.PATH": "/Users/canadytw/Library/Application Support/JetBrains/PyCharm2025.2/plugins/Shell Script/shellcheck",
     "git-widget-placeholder": "main",
     "last_opened_file_path": "/Users/canadytw/PycharmProjects/File_Deduplification/utils",
     "settings.editor.selected.configurable": "preferences.lookFeel"
