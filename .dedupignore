@@ -1,1 +1,4 @@
-# Sample dedupignore content
+# Patterns of files/folders to ignore
+*.tmp
+Icon
+*.DS_Store
