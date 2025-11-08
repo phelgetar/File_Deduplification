@@ -48,6 +48,7 @@ def main():
     parser.add_argument("--gui", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--write-metadata", action="store_true")
+    parser.add_argument("--ignore-errors", action="store_true", help="Skip files with access errors")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)

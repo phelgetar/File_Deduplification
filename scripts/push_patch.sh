@@ -1,42 +1,33 @@
-#!/bin/bash
-# scripts/push_patch.sh
-# Automatically extract and commit the latest patch from ../zips/
+#!/usr/bin/env bash
 
 set -e
 
-cd "$(dirname "$0")/.." || exit 1
+PATCH_DIR="../zips"
+echo "🔍 Searching for latest zip patch in $PATCH_DIR..."
 
-echo "🔍 Searching for latest zip patch in ../zips/..."
-PATCH_ZIP=$(ls -t ../zips/*.zip 2>/dev/null | head -n 1)
+latest_zip=$(ls -t "$PATCH_DIR"/*.zip | head -n 1)
+echo "📦 Extracting $(basename "$latest_zip")..."
 
-if [ ! -f "$PATCH_ZIP" ]; then
-  echo "❌ No zip file found in ../zips/"
-  exit 1
-fi
+unzip -o "$latest_zip" -d ./
 
-echo "📦 Extracting $(basename "$PATCH_ZIP")..."
-unzip -o "$PATCH_ZIP" -d ./
-
-PATCH_INFO="patch_info.txt"
-if unzip -l "$PATCH_ZIP" | grep -q "$PATCH_INFO"; then
-  unzip -p "$PATCH_ZIP" "$PATCH_INFO" > "$PATCH_INFO"
+if [[ -f patch_info.txt ]]; then
+  echo "🧾 Staging files from patch_info.txt..."
+  grep -v '^#' patch_info.txt | grep -v '^\s*$' | xargs git add
 else
   echo "⚠️ No patch_info.txt found in zip. Defaulting to 'git add .'"
   git add .
-fi
-
-if [ -f "$PATCH_INFO" ]; then
-  echo "🧾 Staging files from patch_info.txt..."
-  while IFS= read -r line; do
-    [ -n "$line" ] && git add "$line"
-  done < "$PATCH_INFO"
   rm "$PATCH_INFO"
 fi
 
 echo "📝 Committing patch..."
-git commit -m "🔧 Apply latest patch $(basename "$PATCH_ZIP")"
+git commit -m "🔧 Apply patch $(basename "$latest_zip")"
+
+echo "🔎 Checking staged files for size violations (>100MB)..."
+if git diff --cached --name-only | xargs -I{} find {} -type f -size +100M | grep -q .; then
+  echo "❌ One or more staged files exceed 100MB. Commit aborted."
+  exit 1
+fi
 
 echo "🚀 Pushing to origin..."
 git push origin main
-
 echo "✅ Patch applied and pushed."

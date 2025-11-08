@@ -7,6 +7,7 @@
     <list default="true" id="cb20fa1f-9130-4751-8267-ccaa50b3992d" name="Changes" comment=" - Updated scripts/rollback_core.sh with syntax to rollback to previous versions&#10;- Updated core/db.py to use a ddata base for hashes and files for large directories">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/push_patch.sh" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/push_patch.sh" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
