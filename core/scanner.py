@@ -1,35 +1,14 @@
-#!/usr/bin/env python3
-
-###################################################################
-# Project: File_Deduplification
-# File: scanner.py
-# Purpose: Scans filesystem with optional filtering.
-#
-# Author: Tim Canady
-# Created: 2025-09-28
-#
-# Version: 0.4.4
-# Last Modified: 2025-11-06 by Tim Canady
-#
-# Revision History:
-# - 0.4.4 (2025-11-06): Corrected filter_names param usage — Tim Canady
-###################################################################
-
 from pathlib import Path
-from typing import List, Optional
 
-def scan_directory(source: str, filter_names: Optional[List[str]] = None) -> List[Path]:
-    base = Path(source)
-    all_files = []
+def scan_directory(root, filter_names=None, max_files=None):
+    results = []
+    root_path = Path(root)
 
-    if not base.exists():
-        return []
-
-    for path in base.rglob("*"):
-        if path.is_file():
-            if filter_names:
-                if not any(f in str(path) for f in filter_names):
-                    continue
-            all_files.append(path)
-
-    return all_files
+    for p in root_path.rglob("*"):
+        if p.is_file():
+            if filter_names and not any(fn in str(p) for fn in filter_names):
+                continue
+            results.append(p)
+            if max_files and len(results) >= max_files:
+                break
+    return results
