@@ -1,6 +1,6 @@
 import hashlib
 import logging
-from utils.cache import save_cache_if_enabled
+from utils.cache import save_cache
 
 def generate_hashes(file_paths, use_db=False):
     hashed_files = []
