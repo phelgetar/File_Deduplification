@@ -1,2 +1,3 @@
 core/organizer.py
+main.py
 patch_info.txt
