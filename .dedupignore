@@ -1,4 +1,11 @@
+# Sample dedupignore content
 # Patterns of files/folders to ignore
 *.tmp
 Icon
 *.DS_Store
+/Users/canadytw/.viminfo
+/Volumes/home/iMac_Backup/canadytw/Applications (Parallels)/Icon*
+/Volumes/home/iMac_Backup/canadytw/Amazon Drive/Icon*
+/Volumes/home/iMac_Backup/canadytw/Google Drive/Icon*
+/Volumes/home/iMac_Backup/canadytw/Library/Parallels*
+/Users/canadytw/Library/Caches*
