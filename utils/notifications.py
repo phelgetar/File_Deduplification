@@ -1,3 +1,25 @@
+#!/usr/bin/env python3
+#
+###################################################################
+# Project: File_Deduplification
+# File: notifications.py
+# Purpose: Send notifications via Slack and email
+#
+# Description:
+# Provides notification functionality for file deduplication events.
+# Supports Slack webhooks with rich formatting and SMTP email
+# notifications. Credentials loaded from environment variables.
+#
+# Author: Tim Canady
+# Created: 2025-11-06
+#
+# Version: 0.4.5
+# Last Modified: 2025-11-06 by Tim Canady
+#
+# Revision History:
+# - 0.4.5 (2025-11-06): Initial notification system implementation — Tim Canady
+###################################################################
+
 import os
 import json
 import requests
@@ -14,7 +36,7 @@ EMAIL_USERNAME = os.getenv("EMAIL_USERNAME")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_RECIPIENT = os.getenv("EMAIL_RECIPIENT")
 
-def send_slack_notification(message: str, rich_format: bool = True):
+def send_slack_notification(message: str, rich_format: bool = False):
     if not SLACK_WEBHOOK_URL:
         print("⚠️ SLACK_WEBHOOK_URL not set in .env. Skipping Slack notification.")
         return
