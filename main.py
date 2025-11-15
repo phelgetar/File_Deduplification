@@ -30,6 +30,7 @@ import logging
 import sys
 from core.scanner import scan_directory
 from core.hasher import generate_hashes
+from core.deduplicator import detect_duplicates, filter_duplicates, report_duplicates
 from core.classifier import classify_file
 from core.organizer import plan_organization
 from core.previewer import preview_plan, print_tree_structure
@@ -92,6 +93,8 @@ def main():
     parser.add_argument("--ignore-errors", action="store_true", help="Skip files with access errors")
     parser.add_argument("--use-db", action="store_true", help="Enable database logging")
     parser.add_argument("--metadata-only-size", type=str, help="Files larger than this size will only have metadata stored (no hashing). Format: 75MB, 1GB, etc. Default: no limit")
+    parser.add_argument("--skip-duplicates", action="store_true", help="Skip duplicate files (only process unique files)")
+    parser.add_argument("--duplicate-report", type=str, help="Generate duplicate report and save to file")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
@@ -170,7 +173,23 @@ def main():
 
     print("🔑 Generating file hashes...")
     hashed_files = generate_hashes(files, use_db=args.use_db, metadata_only_size=metadata_only_size)
-    print(f"📂 Unique or non-duplicate files: {len(hashed_files)}")
+    print(f"📂 Files hashed: {len(hashed_files)}")
+
+    print("🔍 Detecting duplicates...")
+    hashed_files = detect_duplicates(hashed_files, use_db=args.use_db)
+
+    # Generate duplicate report if requested
+    if args.duplicate_report:
+        report_duplicates(hashed_files, args.duplicate_report)
+
+    # Filter duplicates if requested
+    if args.skip_duplicates:
+        hashed_files = filter_duplicates(hashed_files, keep_duplicates=False)
+        print(f"📂 Unique files (duplicates filtered): {len(hashed_files)}")
+    else:
+        unique_count = sum(1 for f in hashed_files if not f.is_duplicate)
+        duplicate_count = sum(1 for f in hashed_files if f.is_duplicate)
+        print(f"📂 Unique files: {unique_count}, Duplicates: {duplicate_count}")
 
     print("🤖 Classifying files with AI...")
     classified = [classify_file(f, use_db=args.use_db) for f in hashed_files]
@@ -217,8 +236,8 @@ def main():
         else:
             print("❌ Execution cancelled.")
     else:
-        print("\nTo proceed, run: python executor.py --execute")
         print("\n⚠️ Dry run complete. Use --execute to apply changes.")
+        print("To proceed, run the same command with --execute flag")
 
 if __name__ == "__main__":
     main()

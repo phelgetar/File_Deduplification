@@ -34,3 +34,4 @@ class FileInfo:
     year: Optional[str] = None
     is_duplicate: bool = False
     original_path: Optional[Path] = None
+    path_metadata: Optional[dict] = None  # Metadata extracted from directory structure

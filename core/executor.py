@@ -116,7 +116,8 @@ def write_file_metadata(file_path: Path, file_info: FileInfo) -> None:
         "type": file_info.type,
         "owner": file_info.owner,
         "year": file_info.year,
-        "is_duplicate": file_info.is_duplicate
+        "is_duplicate": file_info.is_duplicate,
+        "path_metadata": file_info.path_metadata  # Include extracted path metadata
     }
 
     metadata_path = file_path.with_suffix(file_path.suffix + ".meta.json")
@@ -124,3 +125,7 @@ def write_file_metadata(file_path: Path, file_info: FileInfo) -> None:
         json.dump(metadata, f, indent=2)
 
     logger.debug(f"Written metadata to {metadata_path}")
+
+    # Log path metadata if present
+    if file_info.path_metadata and file_info.path_metadata.get('tags'):
+        logger.debug(f"  Tags: {', '.join(file_info.path_metadata['tags'])}")

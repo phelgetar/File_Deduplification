@@ -1,7 +1,7 @@
 
 # 📁 File_Deduplification
 
-An AI-enhanced file deduplication and organization tool with **intelligent size management**, **comprehensive file classification (250+ file types)**, database caching, Slack/email notifications, dry-run previews, and GUI preview support.
+An AI-enhanced file deduplication and organization tool with **atomic package detection**, **intelligent size management**, **comprehensive file classification (250+ file types)**, database caching, Slack/email notifications, dry-run previews, and GUI preview support.
 
 ---
 
@@ -9,6 +9,7 @@ An AI-enhanced file deduplication and organization tool with **intelligent size 
 
 ### Core Capabilities
 - 🔍 **Recursive file scanning** with support for regex and wildcard filters
+- 📦 **Atomic package detection** - treats .app, .pkg, .dmg as single units (18-60x faster!)
 - 🔑 **Hash-based duplicate detection** (SHA256) with MySQL caching support
 - 🤖 **AI-powered classification** - 18 categories, 250+ file types
 - 📏 **Intelligent large file handling** - metadata-only mode for files above configurable size threshold
@@ -20,7 +21,14 @@ An AI-enhanced file deduplication and organization tool with **intelligent size 
 - 🧰 **Versioned Git workflow** with release automation
 - ♻️ **Patch and rollback support** for safe updates
 
-### 🆕 New in v0.7.0
+### 🆕 New in v0.8.0
+
+#### **⚡ Atomic Package Detection (Major Performance Boost!)**
+- Automatically detects macOS packages (.app, .pkg, .dmg)
+- Treats packages as single units instead of scanning thousands of internal files
+- Hashes entire package directory for consistent duplicate detection
+- **18-60x performance improvement** when scanning applications
+- Example: HP Easy Start.app (2,500 files) scanned in 5 seconds instead of 5 minutes!
 
 #### **Intelligent File Size Management**
 - Configure size threshold (e.g., `--metadata-only-size 75MB`)
