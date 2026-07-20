@@ -157,7 +157,7 @@ The system now supports **18 categories** with **250+ file types**:
 | **system**     | .plist, .strings, .nib, Makefile         | 15+    |
 | **other**      | Unrecognized formats                      | varies |
 
-See `CLASSIFICATION_IMPROVEMENTS.md` for complete list of all 250+ file types.
+See [docs/CLASSIFICATION_IMPROVEMENTS.md](docs/CLASSIFICATION_IMPROVEMENTS.md) for complete list of all 250+ file types.
 
 ---
 
@@ -202,92 +202,44 @@ make rollback     # Revert latest patch
 
 ```
 File_Deduplification/
-├── CHANGELOG.md
-├── CHANGELOG_LAST.md
-├── File_Dedup_Table_Creation.sql
+├── main.py                  # CLI entry point (delegates to core/main.py)
+├── setup.py                 # Packaging (console script: dedupe)
+├── requirements.txt
 ├── Makefile
 ├── README.md
-├── README_File_Deduplification.md
-├── __pycache__
-├── backup
-├── core
-│   ├── __init__.py
-│   ├── __pycache__
-│   │   ├── __init__.cpython-313.pyc
-│   │   ├── classifier.cpython-313.pyc
-│   │   ├── db.cpython-313.pyc
-│   │   ├── executor.cpython-313.pyc
-│   │   ├── hasher.cpython-313.pyc
-│   │   ├── metadata_writer.cpython-313.pyc
-│   │   ├── organizer.cpython-313.pyc
-│   │   ├── previewer.cpython-313.pyc
-│   │   └── scanner.cpython-313.pyc
-│   ├── classifier.py
-│   ├── db.py
-│   ├── executor.py
-│   ├── hasher.py
+├── CHANGELOG.md
+├── config/                  # YAML config + folder mapping rules
+│   ├── file_type_groups.yaml
+│   ├── folder_mapping.py
+│   ├── folder_mappings.yaml
+│   ├── image_ai_categories.yaml
+│   └── semantic_paths.yaml
+├── core/                    # Application library code
+│   ├── main.py              # CLI implementation
+│   ├── scanner.py           # Recursive scan + atomic package detection
+│   ├── hasher.py            # SHA256 hashing
+│   ├── deduplicator.py      # Duplicate detection
+│   ├── classifier.py        # 18-category file classification
+│   ├── organizer.py         # Folder structure planning
+│   ├── previewer.py         # Dry-run previews
+│   ├── executor.py          # Executes planned file operations
+│   ├── context_detector.py  # Semantic context detection
+│   ├── ai_tagger.py         # AI tagging for all file types
+│   ├── image_analyzer.py    # Image metadata extraction
+│   ├── image_content_analyzer.py  # CLIP-based image content analysis
+│   ├── image_db.py          # Image metadata persistence
 │   ├── metadata_writer.py
-│   ├── organizer.py
-│   ├── previewer.py
-│   └── scanner.py
-├── dry_run_preview_20251111_132112.txt
-├── file_sorting_package.py
-├── main.py
-├── models
-│   ├── __init__.py
-│   ├── __pycache__
-│   │   ├── __init__.cpython-313.pyc
-│   │   └── file_info.cpython-313.pyc
+│   └── db.py                # MySQL connection (SQLAlchemy)
+├── database/
+│   ├── schema/              # Table creation scripts
+│   ├── migrations/          # Incremental schema changes
+│   └── queries/             # Ad-hoc analysis queries
+├── docs/                    # All guides and implementation notes
+├── models/
 │   └── file_info.py
-├── patch_info.txt
-├── preview_2025_11_04.txt
-├── requirements.txt
-├── scripts
-│   ├── bump_version.py
-│   ├── force_clean_push.sh
-│   ├── gen_changelog.py
-│   ├── push_patch.sh
-│   ├── push_utils_patch.sh
-│   ├── read_version.py
-│   ├── release_v045.sh
-│   ├── rollback_core.sh
-│   ├── rollback_patch.sh
-│   ├── setup_env.py
-│   ├── setup_env.sh
-│   ├── update_core.sh
-│   ├── update_main_slack_support.sh
-│   └── validate_large_files.sh
-├── setup.py
-├── tests
-│   ├── __init__.py
-│   ├── __pycache__
-│   │   ├── test_classifier.cpython-313.pyc
-│   │   ├── test_executor.cpython-313.pyc
-│   │   ├── test_hasher.cpython-313.pyc
-│   │   ├── test_organizer.cpython-313.pyc
-│   │   └── test_scanner.cpython-313.pyc
-│   ├── test_classifier.py
-│   ├── test_data
-│   │   ├── financial_2021_john.pdf
-│   │   └── sample1.txt
-│   ├── test_executor.py
-│   ├── test_hasher.py
-│   ├── test_organizer.py
-│   └── test_scanner.py
-├── utils
-│   ├── __init__.py
-│   ├── __pycache__
-│   │   ├── __init__.cpython-313.pyc
-│   │   ├── cache.cpython-313.pyc
-│   │   ├── gui.cpython-313.pyc
-│   │   ├── notifications.cpython-313.pyc
-│   │   └── versioning.cpython-313.pyc
-│   ├── cache.py
-│   ├── gui.py
-│   ├── notifications.py
-│   └── versioning.py
-└── version.yaml
-
+├── scripts/                 # Dev/release automation + debug tools
+├── tests/                   # Test suite (pytest)
+└── utils/                   # Cache, GUI, notifications, path metadata
 ```
 
 ---

@@ -4,7 +4,7 @@
 import yaml
 from pathlib import Path
 
-version_file = Path("version.yaml")
+version_file = Path(__file__).parent / "version.yaml"
 
 def bump_patch():
     with version_file.open() as f:

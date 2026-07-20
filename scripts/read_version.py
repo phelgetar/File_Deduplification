@@ -5,7 +5,8 @@ import yaml
 from pathlib import Path
 
 def read_version():
-    with open("version.yaml") as f:
+    version_file = Path(__file__).parent / "version.yaml"
+    with version_file.open() as f:
         return yaml.safe_load(f)["version"]
 
 if __name__ == "__main__":
