@@ -163,15 +163,20 @@ See [docs/CLASSIFICATION_IMPROVEMENTS.md](docs/CLASSIFICATION_IMPROVEMENTS.md) f
 
 ## 🧰 Requirements
 
-- Python 3.8+
+- Python 3.9+
 - MySQL 8.x
-- OpenAI API key
-- Slack webhook URL (optional)
+- Slack webhook URL (optional, for notifications)
 
 Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+
+For AI image content analysis (CLIP model, ~2GB of ML dependencies), additionally:
+```bash
+pip install -r requirements-ai.txt
+```
+The app runs fine without these — image content tagging is skipped when they're absent.
 
 ---
 
@@ -180,8 +185,14 @@ pip install -r requirements.txt
 Create a `.env` file with the following:
 
 ```env
-OPENAI_API_KEY=your-api-key
-DATABASE_URL=mysql+pymysql://username:password@localhost:3306/File_Deduplification
+# MySQL connection (used by core/db.py)
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=File_Deduplification
+DB_USER=your-db-user
+DB_PASSWORD=your-db-password
+
+# Optional: Slack notifications
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 ```
 

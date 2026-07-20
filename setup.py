@@ -6,18 +6,30 @@ from setuptools import setup, find_packages
 
 setup(
     name="file-deduplicator",
-    version="0.1.0",
+    version="0.4.11",
     description="AI-powered tool for file deduplication, classification, and sorting",
     author="Tim Canady",
-    author_email="you@example.com",
-    packages=find_packages(),
+    packages=find_packages(exclude=["tests", "tests.*"]),
     install_requires=[
-        "openai>=1.0.0",
+        "python-dotenv>=1.0.0",
+        "PyYAML>=6.0",
+        "sqlalchemy>=2.0.21",
+        "pymysql>=1.1.0",
+        "pymupdf>=1.22.5",
         "python-docx>=1.0.0",
         "mutagen>=1.45.1",
-        "pymupdf>=1.22.5",
-        "rich>=13.5.2"
+        "pillow",
+        "requests",
+        "PySimpleGUI>=4.60.5",
     ],
+    extras_require={
+        # CLIP-based image content analysis (core/image_content_analyzer.py)
+        "ai": [
+            "torch",
+            "transformers",
+            "pillow-heif",
+        ],
+    },
     entry_points={
         'console_scripts': [
             'dedupe=core.main:main'

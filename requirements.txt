@@ -1,20 +1,27 @@
-requests
-changelog
-# requirements.txt
-openai>=1.0.0
+# Core dependencies — everything needed for scanning, hashing,
+# classification, organization, database caching, and notifications.
+#
+# For AI image content analysis (CLIP), also install:
+#   pip install -r requirements-ai.txt
+
+# Configuration
+python-dotenv>=1.0.0
+PyYAML>=6.0
+
+# Database (MySQL via SQLAlchemy)
+sqlalchemy>=2.0.21
+pymysql>=1.1.0
+
+# Document/media metadata extraction
 pymupdf>=1.22.5
 python-docx>=1.0.0
 mutagen>=1.45.1
-PyExifTool>=0.5.0
-python-dotenv>=1.0.0
-slack_sdk>=3.21.3
-rich>=13.6.0
-PySimpleGUI>=4.60.5
-sqlalchemy>=2.0.21
-pymysql>=1.1.0
-pillow-heif
+
+# Image metadata (EXIF/IPTC)
 pillow
-torch
-transformers
-torchvision
-torchaudio
+
+# Notifications (Slack webhook via HTTP)
+requests
+
+# GUI preview
+PySimpleGUI>=4.60.5

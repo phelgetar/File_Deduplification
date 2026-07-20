@@ -1,0 +1,11 @@
+# Optional AI dependencies — only needed for CLIP-based image content
+# analysis (core/image_content_analyzer.py). The application degrades
+# gracefully without these: image content tagging is skipped.
+#
+#   pip install -r requirements-ai.txt
+
+torch
+transformers
+
+# HEIC/HEIF image support (iPhone photos)
+pillow-heif
