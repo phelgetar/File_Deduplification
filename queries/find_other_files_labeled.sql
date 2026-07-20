@@ -30,7 +30,7 @@ SELECT
     'Q2: By Extension' AS Query,
     SUBSTRING_INDEX(f.path, '.', -1) AS file_extension,
     COUNT(*) AS count,
-    SUM(f.size) AS total_size_MB,
+    SUM(f.size) AS total_size,
     ROUND(SUM(f.size) / 1048576, 2) AS total_size_mb,
     MIN(f.path) AS example_file
 FROM files f

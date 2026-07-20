@@ -6,14 +6,66 @@ The **application** category automatically detects and preserves the complete di
 
 ---
 
-## 📦 Detected Application Directories
+## 📦 Detected Application & Installer Directories
 
 Files are classified as **application** if their path contains any of these directories (case-insensitive):
 
+### Installed Applications
 | Directory Pattern | Description | Example |
 |-------------------|-------------|---------|
-| `/PacketTracer/` | Cisco PacketTracer installations | `/Desktop/PacketTracer/` |
-| `/Packet Tracer/` | Cisco PacketTracer (space variant) | `/Desktop/Packet Tracer/` |
+| `/PacketTracer/` | Cisco PacketTracer | `/Desktop/PacketTracer/` |
+| `/Packet Tracer/` | Cisco PacketTracer (space) | `/Desktop/Packet Tracer/` |
+
+### Common Installer/Software Directories
+| Directory Pattern | Description | Example |
+|-------------------|-------------|---------|
+| `/Installers/` | General installers | `/Desktop/Installers/` |
+| `/Installer/` | General installer (singular) | `/Desktop/Installer/` |
+| `/Software/` | Software packages | `/Documents/Software/` |
+| `/Applications/` | Applications folder | `/Desktop/Applications/` |
+| `/Apps/` | Apps folder | `/Desktop/Apps/` |
+| `/Setup/` | Setup files | `/Desktop/Setup/` |
+| `/Install/` | Installation files | `/Desktop/Install/` |
+| `/Programs/` | Program files | `/Desktop/Programs/` |
+| `/Program Files/` | Windows-style | `/Desktop/Program Files/` |
+
+### Vendor-Specific Directories
+| Directory Pattern | Vendor | Example |
+|-------------------|--------|---------|
+| `/Adobe/` | Adobe Systems | `/Desktop/Adobe/` |
+| `/Microsoft/` | Microsoft | `/Desktop/Microsoft/` |
+| `/Oracle/` | Oracle | `/Desktop/Oracle/` |
+| `/VMware/` | VMware | `/Desktop/VMware/` |
+| `/Cisco/` | Cisco Systems | `/Desktop/Cisco/` |
+| `/Autodesk/` | Autodesk | `/Desktop/Autodesk/` |
+| `/Corel/` | Corel | `/Desktop/Corel/` |
+| `/Intuit/` | Intuit | `/Desktop/Intuit/` |
+| `/Quicken/` | Quicken | `/Desktop/Quicken/` |
+
+### Code/Scripts Directories (Path-Dependent)
+| Directory Pattern | Description | Example |
+|-------------------|-------------|---------|
+| `/scripts/` | Script collections | `/Documents/scripts/` |
+| `/script/` | Script folder (singular) | `/Documents/script/` |
+| `/code/` | Code repositories | `/Documents/code/` |
+| `/src/` | Source code | `/Documents/src/` |
+| `/source/` | Source files | `/Documents/source/` |
+| `/lib/` | Library files | `/Documents/lib/` |
+| `/libs/` | Libraries folder | `/Documents/libs/` |
+| `/libraries/` | Libraries collection | `/Documents/libraries/` |
+| `/modules/` | Module files | `/Documents/modules/` |
+| `/packages/` | Package files | `/Documents/packages/` |
+| `/bin/` | Binary/executable files | `/Documents/bin/` |
+| `/dist/` | Distribution builds | `/Documents/dist/` |
+| `/build/` | Build artifacts | `/Documents/build/` |
+| `/out/` | Output files | `/Documents/out/` |
+| `/target/` | Target builds | `/Documents/target/` |
+
+**Why These Need Structure Preservation:**
+- Import paths in code depend on relative locations
+- Scripts reference other scripts by path
+- Build systems expect specific directory layouts
+- Module imports require exact directory structure
 
 ---
 
@@ -23,7 +75,44 @@ Files are classified as **application** if their path contains any of these dire
 
 Unlike other file categories that scatter files by type, the application category preserves the **complete directory structure** from the application root onwards, including all libraries, binaries, and configuration files.
 
-### Example 1: PacketTracer Installation
+### Example 1: Adobe Creative Suite Installation
+
+**Source:**
+```
+/Users/canadytw/Desktop/Adobe/
+├── Photoshop_2024/
+│   ├── setup.exe
+│   ├── install.dat
+│   └── resources/
+│       └── plugins/
+├── Illustrator_2024/
+│   ├── setup.exe
+│   └── config.xml
+└── Common/
+    ├── Adobe_License.dll
+    └── shared_libs/
+```
+
+**Organized Output:**
+```
+/organized/
+  Desktop/
+    application/
+      Adobe/
+        ├── Photoshop_2024/
+        │   ├── setup.exe
+        │   ├── install.dat
+        │   └── resources/
+        │       └── plugins/
+        ├── Illustrator_2024/
+        │   ├── setup.exe
+        │   └── config.xml
+        └── Common/
+            ├── Adobe_License.dll
+            └── shared_libs/
+```
+
+### Example 2: PacketTracer Installation
 
 **Source:**
 ```
@@ -60,7 +149,107 @@ Unlike other file categories that scatter files by type, the application categor
             └── default/
 ```
 
-### Example 2: With Root Structure Preservation
+### Example 3: Generic Installers Directory
+
+**Source:**
+```
+/Users/canadytw/Desktop/Installers/
+├── Office_2021/
+│   ├── setup.exe
+│   ├── office.msi
+│   └── support/
+│       └── tools.exe
+├── VMware_Workstation/
+│   ├── VMware-installer.exe
+│   ├── license.txt
+│   └── drivers/
+│       ├── usb.sys
+│       └── network.sys
+└── utilities/
+    └── 7zip_installer.exe
+```
+
+**Organized Output:**
+```
+/organized/
+  Desktop/
+    application/
+      Installers/
+        ├── Office_2021/
+        │   ├── setup.exe
+        │   ├── office.msi
+        │   └── support/
+        │       └── tools.exe
+        ├── VMware_Workstation/
+        │   ├── VMware-installer.exe
+        │   ├── license.txt
+        │   └── drivers/
+        │       ├── usb.sys
+        │       └── network.sys
+        └── utilities/
+            └── 7zip_installer.exe
+```
+
+### Example 4: Scripts Directory with Import Dependencies
+
+**Source:**
+```
+/Users/canadytw/Documents/Documents - 42739/Google Drive/Work Related/scripts/
+├── python/
+│   ├── data_processing/
+│   │   ├── __init__.py
+│   │   ├── parser.py
+│   │   └── utils.py
+│   ├── automation/
+│   │   ├── backup.sh
+│   │   ├── deploy.py
+│   │   └── config.yaml
+│   └── requirements.txt
+├── swift-master/
+│   ├── lib/
+│   │   └── Foundation.swift
+│   ├── test/
+│   │   └── TestRunner.swift
+│   └── Makefile
+└── shared/
+    ├── constants.py
+    └── logger.py
+```
+
+**Organized Output:**
+```
+/organized/
+  Documents - 42739/
+    application/
+      scripts/
+        ├── python/
+        │   ├── data_processing/
+        │   │   ├── __init__.py
+        │   │   ├── parser.py
+        │   │   └── utils.py
+        │   ├── automation/
+        │   │   ├── backup.sh
+        │   │   ├── deploy.py
+        │   │   └── config.yaml
+        │   └── requirements.txt
+        ├── swift-master/
+        │   ├── lib/
+        │   │   └── Foundation.swift
+        │   ├── test/
+        │   │   └── TestRunner.swift
+        │   └── Makefile
+        └── shared/
+            ├── constants.py
+            └── logger.py
+```
+
+**Why This Matters:**
+- ✅ Python imports like `from shared import logger` still work
+- ✅ Shell scripts with relative paths (`../shared/constants.py`) still work
+- ✅ Build tools (Makefile) can still find dependencies
+- ✅ Configuration files reference correct paths
+
+### Example 5: With Root Structure Preservation
 
 **Source:**
 ```
@@ -554,6 +743,14 @@ python main.py /test --base-dir /organized --use-db --execute
 
 ---
 
-**Version:** 1.0.0
+**Version:** 1.3.0
 **Last Updated:** 2025-11-14
-**Modules:** `core/scanner.py`, `core/classifier.py`, `core/organizer.py`
+**Modules:** `core/scanner.py` v0.7.0, `core/classifier.py` v1.3.0, `core/organizer.py` v0.5.0
+
+**What's New in v1.3.0:**
+- ✅ Expanded to detect 33+ installer/software/code directory patterns
+- ✅ Added code/scripts directories with path dependencies (scripts, code, src, lib, modules, bin, dist, build, etc.)
+- ✅ Added vendor-specific directories (Adobe, Microsoft, Oracle, VMware, Cisco, etc.)
+- ✅ Added common installer directories (Installers, Software, Setup, etc.)
+- ✅ ALL files in these directories now preserve their complete structure
+- ✅ Python imports, shell script paths, and build tool dependencies remain intact

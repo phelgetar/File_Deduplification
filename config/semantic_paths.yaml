@@ -1,0 +1,287 @@
+# ============================================================================
+# Semantic Path Configuration
+# ============================================================================
+# Purpose: Define semantic contexts and project indicators for intelligent
+#          file organization based on path context rather than file type.
+#
+# Priority System: Higher numbers = higher priority (checked first)
+# ============================================================================
+
+semantic_contexts:
+  # ========================================================================
+  # Personal - Disability/VA (HIGHEST PRIORITY)
+  # ========================================================================
+  # Medical records, VA documents, disability claims
+  # All files under these paths stay together with complete structure
+  - name: "Personal - Disability/VA"
+    patterns:
+      - "/personal/"
+      - "/disability/"
+      - "/va_img"
+      - "/va/"
+      - "/medical/"
+    destination: "Personal/Disability/VA"
+    preserve_structure: true
+    priority: 100
+    description: "VA medical records, disability documents, medical imaging"
+    examples:
+      - "/personal/Disability/VA_IMG_CANADY_MRI_CERVICAL_SPINE.../DICOM/SERIES_4/file.dcm"
+      - "/Documents/medical/records/2020/VA_appointment.pdf"
+
+  # ========================================================================
+  # Work Files
+  # ========================================================================
+  # Work-related documents, scripts, research
+  - name: "Work"
+    patterns:
+      - "/work-info/"
+      - "/work/"
+      - "/afcam/"
+      - "/scc/"
+      - "/fbi/"
+      - "/workcode/"
+    destination: "Work"
+    preserve_structure: true
+    priority: 90
+    description: "Work-related files, scripts, documents"
+    examples:
+      - "/Documents/Work-Info/scripts/deploy.py"
+      - "/Documents/AFCAM/reports/2024/report.pdf"
+
+  # ========================================================================
+  # Education
+  # ========================================================================
+  # Course materials, assignments, academic work
+  - name: "Education"
+    patterns:
+      - "/education/"
+      - "/coursera/"
+      - "/mit-sloan/"
+      - "/wright-state/"
+      - "/wright-state-university/"
+      - "/afit/"
+      - "/park/"
+      - "/dau/"
+      - "/academics/"
+      - "/naval postgraduate school/"
+    destination: "Education"
+    preserve_structure: true
+    priority: 90
+    description: "Educational materials, courses, academic work"
+    examples:
+      - "/Documents/Education/CEG3310/Labs/Lab1/report.pdf"
+      - "/Documents/MIT-Sloan/AI_Course/week1/assignment.pdf"
+
+  # ========================================================================
+  # Personal/Family
+  # ========================================================================
+  # Family photos, documents, personal items
+  - name: "Personal/Family"
+    patterns:
+      - "/dad/"
+      - "/family/"
+      - "/mom/"
+      - "/brother/"
+      - "/sister/"
+    destination: "Personal/Family"
+    preserve_structure: true
+    priority: 85
+    description: "Family-related files, photos, documents"
+    examples:
+      - "/Documents/Dad/photos/vacation/"
+      - "/Documents/family/documents/birth_certificate.pdf"
+
+  # ========================================================================
+  # Personal (General)
+  # ========================================================================
+  # Personal files not in other categories
+  - name: "Personal"
+    patterns:
+      - "/personal/"
+      - "/benefits/"
+      - "/niel-degrass-tyson/"
+    destination: "Personal"
+    preserve_structure: true
+    priority: 80
+    description: "General personal files"
+    examples:
+      - "/Documents/personal/resume.pdf"
+      - "/Documents/Benefits/health_insurance.pdf"
+
+  # ========================================================================
+  # Hobbies & Interests
+  # ========================================================================
+  - name: "Hobbies"
+    patterns:
+      - "/ham-radio/"
+      - "/ham-radio-survival/"
+      - "/watches/"
+      - "/arduino/"
+      - "/fusion 360/"
+      - "/eagle/"
+    destination: "Hobbies"
+    preserve_structure: true
+    priority: 75
+    description: "Hobby-related files and projects"
+    examples:
+      - "/Documents/HAM-Radio-Survival/antennas/design.pdf"
+      - "/Documents/Arduino/projects/LED_controller/"
+
+  # ========================================================================
+  # Desktop Organization
+  # ========================================================================
+  # Desktop-specific items that should stay organized
+  - name: "Desktop"
+    patterns:
+      - "/desktop/"
+      - "/desktop-anywhere/"
+    destination: "Desktop"
+    preserve_structure: true
+    priority: 70
+    description: "Desktop files and shortcuts"
+    examples:
+      - "/Desktop/Screenshots/Screen Shot 2024-11-14.png"
+      - "/Desktop/humor/funny_meme.jpg"
+
+  # ========================================================================
+  # Archived Documents (Backup machines)
+  # ========================================================================
+  # DISABLED: This was causing all files from backup machines to be organized
+  # to Archives/ instead of by file type (Media/Images, Docs/Word, etc.)
+  # If you want backup-machine based organization, uncomment this section
+  #
+  # - name: "Archives/Documents"
+  #   patterns:
+  #     - "/documents - 2996kd/"
+  #     - "/documents - 42739/"
+  #     - "/documents - fratricide/"
+  #     - "/documents - teufelshunde/"
+  #   destination: "Archives"
+  #   preserve_structure: true
+  #   priority: 65
+  #   description: "Archived documents from previous machines"
+  #   examples:
+  #     - "/Documents/Documents - 42739/Google Drive/work/file.pdf"
+  #     - "/Documents/Documents - 2996KD/old_projects/"
+
+# ============================================================================
+# Project Indicators
+# ============================================================================
+# Detect complete project structures that must remain intact
+# ============================================================================
+
+project_indicators:
+  # ========================================================================
+  # Medical Imaging (DICOM)
+  # ========================================================================
+  - name: "DICOM Medical Images"
+    patterns:
+      - "dicom/"
+      - "series_"
+      - "/dcm/"
+    extensions:
+      - ".dcm"
+    preserve: "parent_tree"
+    priority: 100
+    description: "Medical imaging series (DICOM files)"
+    examples:
+      - "Any path with /DICOM/ folder"
+      - "Any path with SERIES_ in folder name"
+      - "Any .dcm file"
+
+  # ========================================================================
+  # Code Projects
+  # ========================================================================
+  - name: "Code Projects"
+    patterns:
+      - ".git/"
+      - "package.json"
+      - "requirements.txt"
+      - ".xcodeproj"
+      - "pom.xml"
+      - "build.gradle"
+      - "cargo.toml"
+      - "go.mod"
+    preserve: "project_root"
+    priority: 95
+    description: "Code repositories with dependency files"
+    examples:
+      - "Any directory with .git/ folder"
+      - "Any directory with package.json"
+      - "Any directory with requirements.txt"
+
+  # ========================================================================
+  # Xcode Projects
+  # ========================================================================
+  - name: "Xcode Projects"
+    patterns:
+      - ".xcodeproj"
+      - ".xcworkspace"
+    preserve: "project_root"
+    priority: 95
+    description: "Xcode iOS/macOS projects"
+
+  # ========================================================================
+  # Database Files
+  # ========================================================================
+  - name: "Database Projects"
+    patterns:
+      - ".sqlite"
+      - ".db"
+      - "/database/"
+      - "/databases/"
+    preserve: "parent_tree"
+    priority: 85
+    description: "Database files that may be part of applications"
+
+  # ========================================================================
+  # Virtual Machines
+  # ========================================================================
+  - name: "Virtual Machines"
+    patterns:
+      - "/virtualmachines/"
+      - "/virtualbox/"
+      - ".vmwarevm"
+      - ".vbox"
+    preserve: "entire_structure"
+    priority: 90
+    description: "Virtual machine files and configurations"
+
+  # ========================================================================
+  # Game Saves
+  # ========================================================================
+  - name: "Game Saves"
+    patterns:
+      - "/saves/"
+      - "/savegames/"
+      - "/game data/"
+    preserve: "parent_tree"
+    priority: 80
+    description: "Game save files and data"
+
+# ============================================================================
+# Configuration Notes
+# ============================================================================
+#
+# preserve_structure:
+#   - true: Keep complete directory structure from pattern onwards
+#   - false: Only use context for destination, flatten files
+#
+# preserve (for project_indicators):
+#   - entire_structure: Preserve from project root to all children
+#   - project_root: Preserve from detected project root
+#   - parent_tree: Preserve parent directory and all subdirectories
+#
+# priority:
+#   - 100: Critical (medical, legal, required structures)
+#   - 90-95: High (work, education, code projects)
+#   - 80-85: Medium (personal, hobbies)
+#   - 70-75: Low (desktop, miscellaneous)
+#   - < 70: Very low (fallback contexts)
+#
+# patterns:
+#   - Use lowercase
+#   - Include leading/trailing slashes for directory matching
+#   - Partial matches work (e.g., "/work/" matches "/Documents/work-info/")
+#
+# ============================================================================

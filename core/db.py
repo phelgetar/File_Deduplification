@@ -107,6 +107,17 @@ class Operation(Base):
     executed = Column(Boolean, default=False)
     executed_at = Column(DateTime)
 
+
+class FileTag(Base):
+    __tablename__ = 'file_tags'
+
+    id = Column(Integer, primary_key=True)
+    file_id = Column(BigInteger, nullable=False)
+    tag = Column(String(255), nullable=False)
+    tag_source = Column(String(50), default='ai_tagger')  # 'ai_tagger', 'image_content', 'semantic_context', 'manual'
+    confidence = Column(Float, default=1.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # --- DB Logic ---
 
 def init_db():
@@ -174,3 +185,85 @@ def save_classification(file_path, category, owner=None, year=None, confidence=N
                 classification.confidence = confidence
                 classification.classified_at = datetime.utcnow()
             session.commit()
+
+
+def save_file_tags(file_path, tags, tag_source='ai_tagger', confidence=1.0):
+    """
+    Save tags for a file in the database.
+
+    Args:
+        file_path: Path to the file
+        tags: List of tag strings
+        tag_source: Source of tags ('ai_tagger', 'image_content', 'semantic_context', 'manual')
+        confidence: Confidence score for tags (0.0 to 1.0)
+
+    Returns:
+        Number of tags saved
+    """
+    if not tags:
+        return 0
+
+    with Session() as session:
+        file = session.query(File).filter_by(path=str(file_path)).first()
+        if not file:
+            logger.warning(f"File not found in database: {file_path}")
+            return 0
+
+        tags_saved = 0
+        for tag in tags:
+            try:
+                # Check if tag already exists
+                existing_tag = session.query(FileTag).filter_by(
+                    file_id=file.id,
+                    tag=tag,
+                    tag_source=tag_source
+                ).first()
+
+                if not existing_tag:
+                    # Create new tag
+                    file_tag = FileTag(
+                        file_id=file.id,
+                        tag=tag,
+                        tag_source=tag_source,
+                        confidence=confidence
+                    )
+                    session.add(file_tag)
+                    tags_saved += 1
+                else:
+                    # Update confidence if different
+                    if existing_tag.confidence != confidence:
+                        existing_tag.confidence = confidence
+                        existing_tag.created_at = datetime.utcnow()
+                        tags_saved += 1
+
+            except Exception as e:
+                logger.warning(f"Error saving tag '{tag}' for {file_path}: {e}")
+                continue
+
+        session.commit()
+        return tags_saved
+
+
+def get_file_tags(file_path, tag_source=None):
+    """
+    Retrieve tags for a file from the database.
+
+    Args:
+        file_path: Path to the file
+        tag_source: Optional filter by tag source
+
+    Returns:
+        List of tag strings
+    """
+    with Session() as session:
+        file = session.query(File).filter_by(path=str(file_path)).first()
+        if not file:
+            return []
+
+        query = session.query(FileTag).filter_by(file_id=file.id)
+
+        if tag_source:
+            query = query.filter_by(tag_source=tag_source)
+
+        tags = query.all()
+        return [tag.tag for tag in tags]

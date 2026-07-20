@@ -8,4 +8,14 @@ Icon
 /Volumes/home/iMac_Backup/canadytw/Amazon Drive/Icon*
 /Volumes/home/iMac_Backup/canadytw/Google Drive/Icon*
 /Volumes/home/iMac_Backup/canadytw/Library/Parallels*
-/Users/canadytw/Library/Caches*
+/Users/canadytw/Library
+/Users/canadytw/MATLAB-Drive
+**/Backups/**
+**/~Caches/**
+**/.Trash/**
+**/Cache/**
+**/Caches/**
+**/.fseventsd/**
+**/.Spotlight-V100/**
+**/.TemporaryItems/**
+**/.DocumentRevisions-V100/**

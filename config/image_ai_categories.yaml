@@ -1,0 +1,347 @@
+# ============================================================================
+# Image AI Content Analysis - Category Configuration
+# ============================================================================
+# Version: 1.0.0
+# Created: 2025-11-15
+#
+# This file defines categories for AI-based image content analysis.
+# The CLIP model will check each image against these categories and
+# auto-generate keywords based on what it finds.
+#
+# HOW IT WORKS:
+# - Each category has a list of text descriptions
+# - CLIP AI model scores each image against these descriptions
+# - If confidence is above threshold, keyword is added
+# - Keywords are stored in image_keywords table
+#
+# CUSTOMIZATION:
+# - Add your own categories and descriptions
+# - Be specific for better accuracy (e.g., "military uniform" vs "uniform")
+# - You can add unlimited categories
+# ============================================================================
+
+# Minimum confidence threshold (0.0 to 1.0)
+# Default: 0.20 (20% confidence) - adjusted for better detection
+# Lower = more tags (may include false positives)
+# Higher = fewer tags (only very confident matches)
+confidence_threshold: 0.20
+
+# Categories to analyze
+categories:
+
+  # ========================================================================
+  # MILITARY
+  # ========================================================================
+  military:
+    enabled: true
+    descriptions:
+      - "military uniform"
+      - "military personnel"
+      - "soldiers"
+      - "military vehicle"
+      - "military equipment"
+      - "military base"
+      - "combat gear"
+      - "tactical equipment"
+      - "military ceremony"
+      - "military training"
+    keywords:  # Keywords to add if any description matches
+      - "military"
+
+  # ========================================================================
+  # VEHICLES
+  # ========================================================================
+  trucks:
+    enabled: true
+    descriptions:
+      - "truck"
+      - "pickup truck"
+      - "semi truck"
+      - "delivery truck"
+      - "tow truck"
+      - "dump truck"
+      - "fire truck"
+    keywords:
+      - "truck"
+
+  motorcycles:
+    enabled: true
+    descriptions:
+      - "motorcycle"
+      - "motorbike"
+      - "dirt bike"
+      - "cruiser motorcycle"
+      - "sport bike"
+      - "Harley Davidson"
+    keywords:
+      - "motorcycle"
+
+  cars:
+    enabled: true
+    descriptions:
+      - "car"
+      - "sedan"
+      - "SUV"
+      - "sports car"
+      - "convertible"
+      - "station wagon"
+    keywords:
+      - "car"
+
+  aircraft:
+    enabled: true
+    descriptions:
+      - "airplane"
+      - "aircraft"
+      - "helicopter"
+      - "military aircraft"
+      - "fighter jet"
+      - "cargo plane"
+      - "passenger plane"
+    keywords:
+      - "aircraft"
+
+  # ========================================================================
+  # LOCATIONS - TERRAIN/LANDSCAPE
+  # ========================================================================
+  desert:
+    enabled: true
+    descriptions:
+      - "desert"
+      - "desert landscape"
+      - "sand dunes"
+      - "arid landscape"
+      - "sandy terrain"
+    keywords:
+      - "desert"
+
+  urban:
+    enabled: true
+    descriptions:
+      - "city"
+      - "urban"
+      - "cityscape"
+      - "downtown"
+      - "buildings"
+      - "skyscrapers"
+      - "street scene"
+    keywords:
+      - "urban"
+
+  forest:
+    enabled: true
+    descriptions:
+      - "forest"
+      - "woods"
+      - "trees"
+      - "woodland"
+    keywords:
+      - "forest"
+
+  mountains:
+    enabled: true
+    descriptions:
+      - "mountains"
+      - "mountain range"
+      - "mountain landscape"
+      - "peaks"
+    keywords:
+      - "mountains"
+
+  beach:
+    enabled: true
+    descriptions:
+      - "beach"
+      - "ocean"
+      - "seaside"
+      - "coastline"
+      - "shore"
+    keywords:
+      - "beach"
+
+  # ========================================================================
+  # LOCATIONS - REGIONS/COUNTRIES
+  # ========================================================================
+  middle_east:
+    enabled: true
+    descriptions:
+      - "Iraq"
+      - "Middle East"
+      - "Middle Eastern architecture"
+      - "Baghdad"
+      - "Iraqi landscape"
+      - "Arabic architecture"
+    keywords:
+      - "Middle East"
+      - "Iraq"
+
+  texas:
+    enabled: true
+    descriptions:
+      - "Texas"
+      - "Texas landscape"
+      - "Texas flag"
+      - "longhorn"
+      - "cowboy"
+      - "ranch"
+      - "prairie"
+    keywords:
+      - "Texas"
+
+  ohio:
+    enabled: true
+    descriptions:
+      - "Ohio"
+      - "Ohio landscape"
+      - "Ohio flag"
+      - "Midwest landscape"
+    keywords:
+      - "Ohio"
+
+  # ========================================================================
+  # PEOPLE & SOCIAL
+  # ========================================================================
+  people:
+    enabled: true
+    descriptions:
+      - "person"
+      - "people"
+      - "human"
+      - "man"
+      - "woman"
+    keywords:
+      - "people"
+
+  group:
+    enabled: true
+    descriptions:
+      - "group of people"
+      - "crowd"
+      - "multiple people"
+      - "team photo"
+      - "family photo"
+    keywords:
+      - "group"
+
+  portrait:
+    enabled: true
+    descriptions:
+      - "portrait"
+      - "headshot"
+      - "face photo"
+      - "selfie"
+    keywords:
+      - "portrait"
+
+  # ========================================================================
+  # EVENTS & ACTIVITIES
+  # ========================================================================
+  ceremony:
+    enabled: true
+    descriptions:
+      - "ceremony"
+      - "graduation"
+      - "wedding"
+      - "formal event"
+      - "celebration"
+      - "award ceremony"
+    keywords:
+      - "ceremony"
+
+  outdoor_activity:
+    enabled: true
+    descriptions:
+      - "hiking"
+      - "camping"
+      - "fishing"
+      - "hunting"
+      - "outdoor recreation"
+      - "picnic"
+    keywords:
+      - "outdoor activity"
+
+  # ========================================================================
+  # INDOOR/OUTDOOR
+  # ========================================================================
+  indoor:
+    enabled: true
+    descriptions:
+      - "indoor"
+      - "inside building"
+      - "interior"
+      - "room"
+    keywords:
+      - "indoor"
+
+  outdoor:
+    enabled: true
+    descriptions:
+      - "outdoor"
+      - "outside"
+      - "exterior"
+      - "open air"
+    keywords:
+      - "outdoor"
+
+  # ========================================================================
+  # TIME OF DAY
+  # ========================================================================
+  daytime:
+    enabled: true
+    descriptions:
+      - "daytime"
+      - "daylight"
+      - "sunny"
+      - "bright day"
+    keywords:
+      - "daytime"
+
+  night:
+    enabled: true
+    descriptions:
+      - "night"
+      - "nighttime"
+      - "dark"
+      - "evening"
+    keywords:
+      - "night"
+
+  sunset:
+    enabled: true
+    descriptions:
+      - "sunset"
+      - "sunrise"
+      - "golden hour"
+      - "dusk"
+      - "dawn"
+    keywords:
+      - "sunset"
+
+# ============================================================================
+# USAGE NOTES
+# ============================================================================
+#
+# To add a new category:
+# 1. Add a new section with a unique name
+# 2. Set enabled: true
+# 3. Add descriptions (what CLIP should look for)
+# 4. Add keywords (what to tag the image with)
+#
+# Example:
+#   pets:
+#     enabled: true
+#     descriptions:
+#       - "dog"
+#       - "cat"
+#       - "pet"
+#     keywords:
+#       - "pets"
+#
+# To disable a category temporarily:
+#   enabled: false
+#
+# To adjust sensitivity:
+#   - Lower confidence_threshold = more tags (0.15-0.20)
+#   - Higher confidence_threshold = fewer tags (0.30-0.40)
+#
+# ============================================================================

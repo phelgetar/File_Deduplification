@@ -1,0 +1,229 @@
+# ============================================================================
+# Custom Folder Mappings Configuration
+# ============================================================================
+# Version: 1.0.0
+# Created: 2025-11-15
+#
+# This file defines custom folder mappings that override the default
+# file-type classification. Files are organized according to this structure
+# instead of the standard "Images", "Videos", "Documents" folders.
+#
+# Based on: Home_structure.txt
+# ============================================================================
+
+# Enable custom folder mappings
+enabled: true
+
+# Folder mappings by file category
+# Each category maps to a custom destination folder
+mappings:
+
+  # ========================================================================
+  # MEDIA - Images
+  # ========================================================================
+  images:
+    destination: "Media/Images"
+    description: "All image files (photos, pictures, graphics)"
+    extensions:
+      - .jpg
+      - .jpeg
+      - .png
+      - .gif
+      - .bmp
+      - .tiff
+      - .tif
+      - .webp
+      - .heic
+      - .heif
+      - .raw
+      - .cr2
+      - .nef
+      - .dng
+      - .svg
+      - .ico
+      - .psd
+
+  # ========================================================================
+  # MEDIA - Videos
+  # ========================================================================
+  videos:
+    destination: "Media/Videos"
+    description: "Video files"
+    extensions:
+      - .mp4
+      - .mov
+      - .avi
+      - .mkv
+      - .wmv
+      - .flv
+      - .webm
+      - .m4v
+      - .mpg
+      - .mpeg
+      - .3gp
+
+  # Special video subcategories
+  security_camera_videos:
+    destination: "Media/Videos/SecurityCameraVideos"
+    description: "Security camera recordings"
+    patterns:
+      - "**/SVR_Video_Recorder*.mp4"
+      - "**/SecurityCam*.mp4"
+      - "**/security*.mp4"
+
+  wolf_vids:
+    destination: "Media/Videos/WolfVids"
+    description: "Wolf video clips"
+    patterns:
+      - "**/WolfVids/**"
+      - "**/clip*.mov"
+      - "**/wolf*.mov"
+
+  movies:
+    destination: "Media/Videos/Movies"
+    description: "Movie files"
+    patterns:
+      - "**/Movies/**"
+      - "**/*1080p*.mp4"
+      - "**/*720p*.mp4"
+      - "**/*film*.mp4"
+      - "**/*movie*.mp4"
+
+  tv_shows:
+    destination: "Media/Videos/TV"
+    description: "TV show files"
+    patterns:
+      - "**/TV/**"
+      - "**/TV Shows/**"
+      - "**/*S[0-9][0-9]E[0-9][0-9]*.mp4"
+
+  # ========================================================================
+  # MEDIA - Music
+  # ========================================================================
+  music:
+    destination: "Media/Music"
+    description: "Audio/music files"
+    extensions:
+      - .mp3
+      - .wav
+      - .flac
+      - .aac
+      - .m4a
+      - .ogg
+      - .wma
+      - .alac
+
+  # ========================================================================
+  # DOCS - Office Documents
+  # ========================================================================
+  powerpoints:
+    destination: "Docs/PowerPoints"
+    description: "PowerPoint presentations"
+    extensions:
+      - .ppt
+      - .pptx
+      - .pptm
+      - .key  # Apple Keynote
+
+  word_documents:
+    destination: "Docs/Word"
+    description: "Word documents"
+    extensions:
+      - .doc
+      - .docx
+      - .docm
+      - .rtf
+      - .odt
+      - .pages  # Apple Pages
+
+  spreadsheets:
+    destination: "Docs/Spreadsheets"
+    description: "Spreadsheets"
+    extensions:
+      - .xls
+      - .xlsx
+      - .xlsm
+      - .csv
+      - .ods
+      - .numbers  # Apple Numbers
+
+  # Other document types
+  pdfs:
+    destination: "Docs"
+    description: "PDF documents"
+    extensions:
+      - .pdf
+
+  text_files:
+    destination: "Docs"
+    description: "Text files"
+    extensions:
+      - .txt
+      - .md
+      - .markdown
+
+  # ========================================================================
+  # CODE
+  # ========================================================================
+  code:
+    destination: "Code"
+    description: "Source code and scripts"
+    extensions:
+      - .py
+      - .java
+      - .cpp
+      - .c
+      - .h
+      - .js
+      - .ts
+      - .html
+      - .css
+      - .php
+      - .rb
+      - .go
+      - .rs
+      - .swift
+      - .m
+      - .sh
+      - .bash
+      - .sql
+      - .r
+      - .matlab
+      - .scala
+      - .kt
+
+  # ========================================================================
+  # BACKUPS
+  # ========================================================================
+  backups:
+    destination: "Backups"
+    description: "Backup files and archives"
+    extensions:
+      - .bak
+      - .backup
+      - .old
+      - .tmp
+    patterns:
+      - "**/Backups/**"
+      - "**/*backup*/**"
+      - "**/*.backup"
+
+  archives:
+    destination: "Backups"
+    description: "Archive files"
+    extensions:
+      - .zip
+      - .tar
+      - .gz
+      - .rar
+      - .7z
+      - .bz2
+      - .xz
+
+# ============================================================================
+# Priority system:
+# 1. Pattern matches (most specific)
+# 2. Extension matches
+# 3. Semantic context (from context_detector.py)
+# 4. Default file type classification
+# ============================================================================

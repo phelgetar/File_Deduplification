@@ -13,10 +13,18 @@
 # Author: Tim Canady
 # Created: 2025-09-28
 #
-# Version: 1.1.0
+# Version: 1.7.1
 # Last Modified: 2025-11-14 by Tim Canady
 #
 # Revision History:
+# - 1.7.1 (2025-11-14): Added DICOM medical imaging file extensions (.dcm, .dicom) to scientific category — Tim Canady
+# - 1.7.0 (2025-11-14): Added special video subcategories (security_camera_video, wolf_video) with filename pattern detection — Tim Canady
+# - 1.6.1 (2025-11-14): Added AI language extensions (.fasl, .lsp, .asd for Lisp; .pro, .prolog for Prolog) — Tim Canady
+# - 1.6.0 (2025-11-14): Added backup directory preservation and Xcode project detection (xcode, .xcodeproj, .xcworkspace) — Tim Canady
+# - 1.5.0 (2025-11-14): Separated code/scripts directories to use "code" category instead of "application" — Tim Canady
+# - 1.4.0 (2025-11-14): CRITICAL FIX - Moved structure-preserving checks to HIGHEST priority (before all other classification) — Tim Canady
+# - 1.3.0 (2025-11-14): Added code/scripts directory preservation (scripts, code, src, lib, modules, etc.) — Tim Canady
+# - 1.2.0 (2025-11-14): Expanded application category to preserve ALL installer/software directory structures — Tim Canady
 # - 1.1.0 (2025-11-14): Added comprehensive disk image formats and Linux installers (.flatpak, .snap, .appimage) — Tim Canady
 # - 1.0.0 (2025-11-14): Added application category for PacketTracer and .mpkg support (22 categories total) — Tim Canady
 # - 0.9.0 (2025-11-14): Added web category for preserving website directory structures — Tim Canady
@@ -64,8 +72,53 @@ def classify_file(file_info: FileInfo, use_db: bool = False) -> FileInfo:
     file_path_str = str(file_info.path)
     category = "unknown"
 
-    # MIME type based classification (highest priority)
-    if mime_type:
+    # ====================================================================
+    # STRUCTURE-PRESERVING DIRECTORY DETECTION (HIGHEST PRIORITY)
+    # These must be checked FIRST before any other classification
+    # to ensure complete directory structure is preserved
+    # ====================================================================
+
+    # Backup directories (preserve structure - use "backup" category)
+    if any(backup_dir in file_path_str.lower() for backup_dir in [
+        "/backup/", "/backups/", "/backup_", "/backups_"
+    ]):
+        category = "backup"
+
+    # Web project directories (preserve structure)
+    elif any(web_dir in file_path_str for web_dir in [
+        "/http/", "/https/", "/www/", "/website/", "/websites/", "/web/",
+        "/html/", "/public_html/", "/htdocs/", "/web-projects/", "/sites/"
+    ]):
+        category = "web"
+
+    # Code/Scripts directories (preserve structure - use "code" category)
+    elif any(code_dir in file_path_str.lower() for code_dir in [
+        "/scripts/", "/script/", "/code/", "/src/", "/source/",
+        "/lib/", "/libs/", "/libraries/", "/modules/", "/packages/",
+        "/bin/", "/dist/", "/build/", "/out/", "/target/",
+        "/xcode/", "xcode", ".xcodeproj", ".xcworkspace"
+    ]):
+        category = "code"
+
+    # Application and installer directories (preserve structure - use "application" category)
+    elif any(app_dir in file_path_str.lower() for app_dir in [
+        # Installed applications
+        "/packettracer/", "/packet tracer/",
+        # Common installer/software directory names
+        "/installers/", "/installer/", "/software/", "/applications/", "/apps/",
+        "/setup/", "/install/", "/programs/", "/program files/",
+        # Vendor-specific directories
+        "/adobe/", "/microsoft/", "/oracle/", "/vmware/", "/cisco/",
+        "/autodesk/", "/corel/", "/intuit/", "/quicken/"
+    ]):
+        category = "application"
+
+    # ====================================================================
+    # STANDARD CLASSIFICATION (only if not in structure-preserving directory)
+    # ====================================================================
+
+    # MIME type based classification
+    if category == "unknown" and mime_type:
         if mime_type.startswith("image"):
             category = "image"
         elif mime_type.startswith("video"):
@@ -142,8 +195,9 @@ def classify_file(file_info: FileInfo, use_db: bool = False) -> FileInfo:
                                ".go", ".rs", ".sh", ".bash", ".zsh", ".php", ".swift", ".kt", ".scala",
                                ".r", ".m", ".vb", ".pl", ".lua", ".groovy", ".ts", ".jsx", ".tsx",
                                ".sql", ".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue",
-                               ".dart", ".f90", ".f", ".asm", ".s", ".lisp", ".cl", ".scm", ".el",
-                               ".clj", ".coffee", ".hs", ".ml", ".erl", ".ex", ".jl", ".nim",
+                               ".dart", ".f90", ".f", ".asm", ".s", ".lisp", ".cl", ".lsp", ".fasl", ".asd",
+                               ".scm", ".el", ".clj", ".coffee", ".hs", ".ml", ".erl", ".ex", ".jl", ".nim",
+                               ".pro", ".prolog",
                                ".scpt", ".applescript", ".bat", ".cmd", ".ps1", ".psm1",
                                ".class", ".pyc", ".pyo", ".pyd", ".o", ".obj", ".a", ".lib",
                                ".jar", ".war", ".ear"]:
@@ -183,9 +237,10 @@ def classify_file(file_info: FileInfo, use_db: bool = False) -> FileInfo:
         elif file_extension in [".lnk", ".url", ".webloc", ".desktop", ".rdp", ".vncloc"]:
             category = "shortcut"
 
-        # Scientific/Engineering
+        # Scientific/Engineering/Medical
         elif file_extension in [".mat", ".fig", ".hdf5", ".h5", ".nc", ".fits", ".npy", ".npz",
-                               ".rdata", ".rds", ".sav", ".dta", ".pkl", ".pickle"]:
+                               ".rdata", ".rds", ".sav", ".dta", ".pkl", ".pickle",
+                               ".dcm", ".dicom"]:  # DICOM medical imaging files
             category = "scientific"
 
         # Financial and Tax files
@@ -268,21 +323,15 @@ def classify_file(file_info: FileInfo, use_db: bool = False) -> FileInfo:
         ]):
             category = "financial"
 
-        # Web project directories (preserve structure)
-        elif any(web_dir in file_path_str for web_dir in [
-            "/http/", "/https/", "/www/", "/website/", "/websites/", "/web/",
-            "/html/", "/public_html/", "/htdocs/", "/web-projects/", "/sites/"
-        ]):
-            category = "web"
-
-        # Application directories (preserve structure)
-        elif any(app_dir in file_path_str.lower() for app_dir in [
-            "/packettracer/", "/packet tracer/"
-        ]):
-            category = "application"
-
         else:
             category = "other"
+
+    # Special handling for video subcategories
+    if category == "video":
+        from config.folder_mapping import detect_video_subcategory
+        video_subcategory = detect_video_subcategory(file_name)
+        if video_subcategory:
+            category = video_subcategory
 
     # Update the FileInfo object with classification
     file_info.type = category

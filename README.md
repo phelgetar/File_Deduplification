@@ -21,7 +21,35 @@ An AI-enhanced file deduplication and organization tool with **atomic package de
 - 🧰 **Versioned Git workflow** with release automation
 - ♻️ **Patch and rollback support** for safe updates
 
-### 🆕 New in v0.8.0
+### 🆕 New in v0.9.0
+
+#### **🤖 AI Tagging for ALL Files**
+- Semantic analysis generates intelligent tags for ALL file types (not just images)
+- Tags generated from path context, directory structure, filename analysis
+- Semantic context detection (Personal/Disability/VA, Work, Education)
+- Database storage in `file_tags` table with tag source tracking
+- Example: Work documents automatically tagged with "Work", "Project", "2024"
+
+#### **📁 File Type Filtering System**
+- New `--file-types` flag for selective scanning by file type groups
+- 20+ predefined groups: images, videos, audio, docs, word_docs, presentations, code, etc.
+- Hierarchical support: "media" includes images, videos, and audio
+- Comma-separated multiple types: `--file-types images,videos`
+- Use `--list-file-types` to see all available groups
+
+#### **🎨 Enhanced Image Content Analysis**
+- CLIP AI model analyzes image content (objects, scenes, people)
+- Tags saved to unified `file_tags` table
+- Combined with path-based semantic tags for comprehensive tagging
+- Example: Wedding photo tagged with "Wedding", "People", "2020", "celebration"
+
+#### **🐛 Critical Fixes**
+- Fixed root_folder double-nesting bug (no more `/Documents - 42739/Documents - 42739/`)
+- Fixed path metadata extraction to prefer backup-style folders ("Documents - 42739" over "Documents")
+- Disabled conflicting semantic context patterns that caused wrong organization
+- Files now correctly organized to Media/Images/, Docs/Word/, etc.
+
+### 🆕 From v0.8.0
 
 #### **⚡ Atomic Package Detection (Major Performance Boost!)**
 - Automatically detects macOS packages (.app, .pkg, .dmg)
@@ -88,7 +116,11 @@ python main.py /Photos \
 | `--base-dir`              | Target directory for sorted files                               |
 | `--filter`                | One or more directory name filters                              |
 | `--max-files`             | Maximum number of files to process                              |
-| `--metadata-only-size`    | **NEW**: Files larger than this size will only have metadata stored (no hashing). Format: `75MB`, `1GB`, `500KB` |
+| `--file-types`            | **NEW**: Filter by file type groups (e.g., `images`, `docs`, `media`). Use comma for multiple: `images,videos` |
+| `--list-file-types`       | **NEW**: List all available file type groups and exit           |
+| `--analyze-images`        | Extract and store comprehensive metadata from image files       |
+| `--ai-tagging`            | Use AI to identify image content (objects, scenes, people)      |
+| `--metadata-only-size`    | Files larger than this size will only have metadata stored (no hashing). Format: `75MB`, `1GB`, `500KB` |
 | `--dry-run-log`           | Save dry-run results to log file                                |
 | `--log-format`            | `json` or `txt` format for logs                                 |
 | `--notify`                | `slack` or `email` notifications                                |

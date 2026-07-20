@@ -60,21 +60,25 @@ def extract_path_metadata(file_path: Path, base_path: Optional[Path] = None) -> 
     }
 
     # Find the root structure folder (e.g., "Documents - 2996KD", "Desktop - Teufelshunde")
-    # These typically contain a dash or are standard Apple folders
+    # IMPORTANT: Check for Apple backup style FIRST (with dash) before standalone folders
+    # This ensures "Documents - 42739" is preferred over "Documents"
     apple_folders = {'Desktop', 'Documents', 'Downloads', 'Pictures', 'Movies', 'Music'}
     root_folder_idx = None
 
+    # First pass: Look for Apple backup style (e.g., "Desktop - 2996KD", "Documents - 42739")
     for idx, part in enumerate(parts):
-        # Check if this is a root structure folder
-        if part in apple_folders:
+        if ' - ' in part and any(apple in part for apple in apple_folders):
             root_folder_idx = idx
             metadata['root_folder'] = part
             break
-        # Check for Apple backup style (e.g., "Desktop - 2996KD")
-        elif ' - ' in part and any(apple in part for apple in apple_folders):
-            root_folder_idx = idx
-            metadata['root_folder'] = part
-            break
+
+    # Second pass: Only if no backup-style folder found, look for standalone Apple folders
+    if root_folder_idx is None:
+        for idx, part in enumerate(parts):
+            if part in apple_folders:
+                root_folder_idx = idx
+                metadata['root_folder'] = part
+                break
 
     # Extract parent folders (everything between root and filename)
     if root_folder_idx is not None and root_folder_idx < len(parts) - 1:

@@ -13,10 +13,11 @@
 # Author: Tim Canady
 # Created: 2025-09-28
 #
-# Version: 0.7.0
-# Last Modified: 2025-11-14 by Tim Canady
+# Version: 0.7.1
+# Last Modified: 2025-11-21 by Tim Canady
 #
 # Revision History:
+# - 0.7.1 (2025-11-21): Added .framework to atomic packages, improved timeout error handling — Tim Canady
 # - 0.7.0 (2025-11-14): Added comprehensive disk image support (.iso, .img, .vhd, .vmdk, .vdi, .ova, .ovf, .toast, .cdr, .nrg, .mds, .mdf) — Tim Canady
 # - 0.6.2 (2025-11-14): Added .mpkg to atomic package detection — Tim Canady
 # - 0.6.1 (2025-11-14): Added hidden file detection (skip files starting with '.') — Tim Canady
@@ -28,6 +29,7 @@
 
 from pathlib import Path
 import logging
+import os
 from fnmatch import fnmatch
 
 logger = logging.getLogger(__name__)
@@ -126,6 +128,7 @@ def is_atomic_package(path):
 
     Atomic packages:
     - .app (macOS application bundles)
+    - .framework (macOS framework bundles)
     - .pkg (macOS installer packages)
     - .mpkg (macOS meta-package installers)
     - .dmg, .iso, .img (disk images)
@@ -142,24 +145,32 @@ def is_atomic_package(path):
         True if path is an atomic package, False otherwise
     """
     atomic_extensions = {
-        '.app', '.pkg', '.mpkg',              # macOS packages
-        '.dmg', '.iso', '.img',               # Disk images
-        '.vhd', '.vmdk', '.vdi',              # VM disk images
-        '.ova', '.ovf',                       # Virtual appliances
-        '.toast', '.cdr',                     # macOS disk images
-        '.nrg',                               # Nero disk images
-        '.mds', '.mdf'                        # Media Descriptor Files
+        '.app', '.framework', '.pkg', '.mpkg',  # macOS packages and frameworks
+        '.dmg', '.iso', '.img',                 # Disk images
+        '.vhd', '.vmdk', '.vdi',                # VM disk images
+        '.ova', '.ovf',                         # Virtual appliances
+        '.toast', '.cdr',                       # macOS disk images
+        '.nrg',                                 # Nero disk images
+        '.mds', '.mdf'                          # Media Descriptor Files
     }
     return path.suffix.lower() in atomic_extensions
 
 
-def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupignore"):
+def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupignore", allowed_extensions=None):
     """
-    Scan directory for files, optionally filtering by root-level directory names.
+    Scan directory for files, optionally filtering by root-level directory names and file types.
 
-    Treats atomic packages (.app, .pkg, .mpkg, .dmg) as single units without scanning internals.
+    Treats atomic packages (.app, .framework, .pkg, .mpkg, .dmg) as single units without scanning internals.
     When an atomic package is encountered, it's added to results as a single item and
     all its internal contents are skipped to avoid thousands of unnecessary file scans.
+
+    Args:
+        root: Root directory to scan
+        filter_names: Optional list of root-level directory names to include
+        max_files: Optional maximum number of files to scan
+        ignore_file: Path to .dedupignore file (default: .dedupignore)
+        allowed_extensions: Optional set of file extensions to include (e.g., {'.jpg', '.png'})
+                          If None, all file types are included
 
     Example:
         HP Easy Start.app will be scanned as one unit at:
@@ -196,92 +207,190 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
             filter_path = root_path / filter_name
             if filter_path.exists() and filter_path.is_dir():
                 logger.info(f"Scanning filtered directory: {filter_path}")
-                for p in filter_path.rglob("*"):
-                    # Skip if already processed
-                    if p in processed_paths:
-                        continue
+                try:
+                    for dirpath, dirnames, filenames in os.walk(filter_path, topdown=True, onerror=None):
+                        try:
+                            current_path = Path(dirpath)
 
-                    # Skip hidden files and directories
-                    if is_hidden(p):
-                        hidden_count += 1
-                        continue
+                            # Skip hidden directories
+                            if is_hidden(current_path):
+                                hidden_count += 1
+                                dirnames[:] = []  # Don't descend into hidden directories
+                                continue
 
-                    # Check if this is an atomic package
-                    if is_atomic_package(p):
-                        if should_ignore(p, ignore_patterns):
-                            ignored_count += 1
+                            # Check directories for atomic packages and filter out problematic ones
+                            dirs_to_remove = []
+                            for dirname in dirnames[:]:  # Make a copy to iterate
+                                dir_path = current_path / dirname
+
+                                # Skip if already processed
+                                if dir_path in processed_paths:
+                                    dirs_to_remove.append(dirname)
+                                    continue
+
+                                # Skip hidden directories
+                                if dirname.startswith('.'):
+                                    hidden_count += 1
+                                    dirs_to_remove.append(dirname)
+                                    continue
+
+                                # Check if this is an atomic package
+                                if is_atomic_package(dir_path):
+                                    # Don't descend into atomic packages
+                                    dirs_to_remove.append(dirname)
+
+                                    if should_ignore(dir_path, ignore_patterns):
+                                        ignored_count += 1
+                                        continue
+
+                                    results.append(dir_path)
+                                    processed_paths.add(dir_path)
+                                    atomic_package_count += 1
+                                    logger.debug(f"  📦 Atomic package: {dir_path.name}")
+
+                                    if max_files and len(results) >= max_files:
+                                        logger.info(f"Reached max_files limit. Ignored {ignored_count} files, skipped {hidden_count} hidden files, found {atomic_package_count} atomic packages.")
+                                        return results
+
+                            # Remove directories we don't want to descend into
+                            for dirname in dirs_to_remove:
+                                dirnames.remove(dirname)
+
+                            # Process files in current directory
+                            for filename in filenames:
+                                try:
+                                    file_path = current_path / filename
+
+                                    # Skip if already processed
+                                    if file_path in processed_paths:
+                                        continue
+
+                                    # Skip hidden files
+                                    if filename.startswith('.'):
+                                        hidden_count += 1
+                                        continue
+
+                                    # Check if file should be ignored
+                                    if should_ignore(file_path, ignore_patterns):
+                                        ignored_count += 1
+                                        continue
+
+                                    # Check file extension filter
+                                    if allowed_extensions is not None:
+                                        if file_path.suffix.lower() not in allowed_extensions:
+                                            continue
+
+                                    results.append(file_path)
+                                    processed_paths.add(file_path)
+
+                                    if max_files and len(results) >= max_files:
+                                        logger.info(f"Reached max_files limit. Ignored {ignored_count} files, skipped {hidden_count} hidden files, found {atomic_package_count} atomic packages.")
+                                        return results
+
+                                except (OSError, TimeoutError, PermissionError) as e:
+                                    logger.warning(f"Error accessing file {filename}: {e}")
+                                    continue
+
+                        except (OSError, TimeoutError, PermissionError) as e:
+                            logger.warning(f"Error accessing directory {dirpath}: {e}")
                             continue
 
-                        results.append(p)
-                        processed_paths.add(p)
-                        atomic_package_count += 1
-                        logger.debug(f"  📦 Atomic package: {p.name}")
-
-                        # Mark all descendants as processed to skip them
-                        if p.is_dir():
-                            for descendant in p.rglob("*"):
-                                processed_paths.add(descendant)
-
-                        if max_files and len(results) >= max_files:
-                            logger.info(f"Reached max_files limit. Ignored {ignored_count} files, skipped {hidden_count} hidden files, found {atomic_package_count} atomic packages.")
-                            return results
-                        continue
-
-                    if p.is_file():
-                        # Check if file should be ignored
-                        if should_ignore(p, ignore_patterns):
-                            ignored_count += 1
-                            continue
-
-                        results.append(p)
-                        processed_paths.add(p)
-                        if max_files and len(results) >= max_files:
-                            logger.info(f"Reached max_files limit. Ignored {ignored_count} files, skipped {hidden_count} hidden files, found {atomic_package_count} atomic packages.")
-                            return results
+                except (OSError, TimeoutError, PermissionError) as e:
+                    logger.warning(f"Error walking {filter_path}: {e}")
+                    continue
             else:
                 logger.warning(f"Filtered directory does not exist: {filter_path}")
     else:
-        # Scan entire root directory
-        for p in root_path.rglob("*"):
-            # Skip if already processed
-            if p in processed_paths:
-                continue
+        # Scan entire root directory using os.walk for better control
+        try:
+            for dirpath, dirnames, filenames in os.walk(root_path, topdown=True, onerror=None):
+                try:
+                    current_path = Path(dirpath)
 
-            # Skip hidden files and directories
-            if is_hidden(p):
-                hidden_count += 1
-                continue
+                    # Skip hidden directories
+                    if is_hidden(current_path):
+                        hidden_count += 1
+                        dirnames[:] = []  # Don't descend into hidden directories
+                        continue
 
-            # Check if this is an atomic package
-            if is_atomic_package(p):
-                if should_ignore(p, ignore_patterns):
-                    ignored_count += 1
+                    # Check directories for atomic packages and filter out problematic ones
+                    dirs_to_remove = []
+                    for dirname in dirnames[:]:  # Make a copy to iterate
+                        dir_path = current_path / dirname
+
+                        # Skip if already processed
+                        if dir_path in processed_paths:
+                            dirs_to_remove.append(dirname)
+                            continue
+
+                        # Skip hidden directories
+                        if dirname.startswith('.'):
+                            hidden_count += 1
+                            dirs_to_remove.append(dirname)
+                            continue
+
+                        # Check if this is an atomic package
+                        if is_atomic_package(dir_path):
+                            # Don't descend into atomic packages
+                            dirs_to_remove.append(dirname)
+
+                            if should_ignore(dir_path, ignore_patterns):
+                                ignored_count += 1
+                                continue
+
+                            results.append(dir_path)
+                            processed_paths.add(dir_path)
+                            atomic_package_count += 1
+                            logger.debug(f"  📦 Atomic package: {dir_path.name}")
+
+                            if max_files and len(results) >= max_files:
+                                return results
+
+                    # Remove directories we don't want to descend into
+                    for dirname in dirs_to_remove:
+                        dirnames.remove(dirname)
+
+                    # Process files in current directory
+                    for filename in filenames:
+                        try:
+                            file_path = current_path / filename
+
+                            # Skip if already processed
+                            if file_path in processed_paths:
+                                continue
+
+                            # Skip hidden files
+                            if filename.startswith('.'):
+                                hidden_count += 1
+                                continue
+
+                            # Check if file should be ignored
+                            if should_ignore(file_path, ignore_patterns):
+                                ignored_count += 1
+                                continue
+
+                            # Check file extension filter
+                            if allowed_extensions is not None:
+                                if file_path.suffix.lower() not in allowed_extensions:
+                                    continue
+
+                            results.append(file_path)
+                            processed_paths.add(file_path)
+
+                            if max_files and len(results) >= max_files:
+                                return results
+
+                        except (OSError, TimeoutError, PermissionError) as e:
+                            logger.warning(f"Error accessing file {filename}: {e}")
+                            continue
+
+                except (OSError, TimeoutError, PermissionError) as e:
+                    logger.warning(f"Error accessing directory {dirpath}: {e}")
                     continue
 
-                results.append(p)
-                processed_paths.add(p)
-                atomic_package_count += 1
-                logger.debug(f"  📦 Atomic package: {p.name}")
-
-                # Mark all descendants as processed to skip them
-                if p.is_dir():
-                    for descendant in p.rglob("*"):
-                        processed_paths.add(descendant)
-
-                if max_files and len(results) >= max_files:
-                    break
-                continue
-
-            if p.is_file():
-                # Check if file should be ignored
-                if should_ignore(p, ignore_patterns):
-                    ignored_count += 1
-                    continue
-
-                results.append(p)
-                processed_paths.add(p)
-                if max_files and len(results) >= max_files:
-                    break
+        except (OSError, TimeoutError, PermissionError) as e:
+            logger.error(f"Error walking {root_path}: {e}")
+            return results
 
     if ignored_count > 0:
         logger.info(f"Ignored {ignored_count} files based on .dedupignore patterns")
@@ -290,6 +399,6 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
         logger.info(f"Skipped {hidden_count} hidden files (starting with '.')")
 
     if atomic_package_count > 0:
-        logger.info(f"Found {atomic_package_count} atomic packages (.app, .pkg, .dmg) treated as single units")
+        logger.info(f"Found {atomic_package_count} atomic packages (.app, .framework, .pkg, .dmg) treated as single units")
 
     return results
