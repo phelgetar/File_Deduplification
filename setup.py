@@ -20,7 +20,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'dedupe=main:main'
+            'dedupe=core.main:main'
         ]
     },
     python_requires='>=3.9'
