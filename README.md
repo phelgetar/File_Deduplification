@@ -3,6 +3,8 @@
 
 An AI-enhanced file deduplication and organization tool with **atomic package detection**, **intelligent size management**, **comprehensive file classification (250+ file types)**, database caching, Slack/email notifications, dry-run previews, and GUI preview support.
 
+> 📘 **[Full User Guide (PDF)](docs/USER_GUIDE.pdf)** — every CLI switch with examples, project structure, version management, and the git workflow. Regenerate after CLI changes with `python scripts/generate_user_guide.py`.
+
 ---
 
 ## 🚀 Features
