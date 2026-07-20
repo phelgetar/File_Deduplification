@@ -13,10 +13,11 @@
 # Author: Tim Canady
 # Created: 2025-09-28
 #
-# Version: 1.7.1
-# Last Modified: 2025-11-14 by Tim Canady
+# Version: 1.8.0
+# Last Modified: 2026-07-20 by Tim Canady
 #
 # Revision History:
+# - 1.8.0 (2026-07-20): Added optional local-LLM (Ollama) fallback for files classified as "other" — Tim Canady
 # - 1.7.1 (2025-11-14): Added DICOM medical imaging file extensions (.dcm, .dicom) to scientific category — Tim Canady
 # - 1.7.0 (2025-11-14): Added special video subcategories (security_camera_video, wolf_video) with filename pattern detection — Tim Canady
 # - 1.6.1 (2025-11-14): Added AI language extensions (.fasl, .lsp, .asd for Lisp; .pro, .prolog for Prolog) — Tim Canady
@@ -42,7 +43,7 @@ import mimetypes
 import logging
 from models.file_info import FileInfo
 
-def classify_file(file_info: FileInfo, use_db: bool = False) -> FileInfo:
+def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None) -> FileInfo:
     """
     Comprehensive file classification based on MIME type and file extension.
 
@@ -333,6 +334,14 @@ def classify_file(file_info: FileInfo, use_db: bool = False) -> FileInfo:
         if video_subcategory:
             category = video_subcategory
 
+    # LLM fallback: ask a local model about files nothing else could place
+    confidence = 0.8
+    if category == "other" and llm_classifier is not None:
+        llm_result = llm_classifier.classify(file_info)
+        if llm_result and llm_result[0] != "other":
+            category, confidence = llm_result
+            logging.debug(f"  🦙 LLM classified {file_info.path.name} as '{category}' ({confidence:.2f})")
+
     # Update the FileInfo object with classification
     file_info.type = category
 
@@ -345,7 +354,7 @@ def classify_file(file_info: FileInfo, use_db: bool = False) -> FileInfo:
                 category=category,
                 owner=file_info.owner,
                 year=int(file_info.year) if file_info.year else None,
-                confidence=0.8  # Mock confidence score
+                confidence=confidence
             )
             logging.debug(f"  💾 Saved classification to DB: {file_info.path.name}")
         except Exception as db_err:

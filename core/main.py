@@ -110,6 +110,7 @@ def main():
     parser.add_argument("--duplicate-report", type=str, help="Generate duplicate report and save to file")
     parser.add_argument("--analyze-images", action="store_true", help="Extract and store comprehensive metadata from image files")
     parser.add_argument("--ai-tagging", action="store_true", help="Use AI to automatically identify image content (objects, scenes, people, locations)")
+    parser.add_argument("--llm-classify", action="store_true", help="Use a local Ollama LLM to classify files that fall into the 'other' category (requires a running Ollama server; see OLLAMA_HOST/LLM_MODEL in .env)")
     parser.add_argument("--file-types", type=str, help="Filter by file type groups (e.g., 'images', 'media', 'docs', 'word_docs'). Use comma for multiple: 'images,videos'")
     parser.add_argument("--list-file-types", action="store_true", help="List all available file type groups and exit")
     args = parser.parse_args()
@@ -233,9 +234,24 @@ def main():
         duplicate_count = sum(1 for f in hashed_files if f.is_duplicate)
         print(f"📂 Unique files: {unique_count}, Duplicates: {duplicate_count}")
 
+    # Set up local LLM classification fallback if requested
+    llm_classifier = None
+    if args.llm_classify:
+        from core.llm_client import LLMClassifier
+        llm_classifier = LLMClassifier()
+        if llm_classifier.is_available():
+            print(f"🦙 Local LLM fallback enabled ({llm_classifier.model} @ {llm_classifier.host})")
+        else:
+            print(f"⚠️  Ollama server not reachable at {llm_classifier.host} — LLM classification skipped.")
+            print("   Start it with: ollama serve")
+            llm_classifier = None
+
     print("🤖 Classifying files with AI...")
-    classified = [classify_file(f, use_db=args.use_db) for f in hashed_files]
+    classified = [classify_file(f, use_db=args.use_db, llm_classifier=llm_classifier) for f in hashed_files]
     print(f"🔎 Files classified: {len(classified)}")
+    if llm_classifier is not None:
+        other_count = sum(1 for f in classified if f.type == "other")
+        print(f"🦙 LLM resolved {len(llm_classifier._cache)} unique hard-to-classify files; {other_count} remain 'other'")
 
     # AI-based tagging for ALL files (path-based semantic analysis)
     if args.use_db:

@@ -9,6 +9,7 @@ An AI-enhanced file deduplication and organization tool with **atomic package de
 
 ### Core Capabilities
 - 🔍 **Recursive file scanning** with support for regex and wildcard filters
+- 🦙 **Local LLM classification fallback** (`--llm-classify`) - files the rule-based classifier can't place are classified by a local Ollama model from filename, path, and content; nothing leaves your machine
 - 📦 **Atomic package detection** - treats .app, .pkg, .dmg as single units (18-60x faster!)
 - 🔑 **Hash-based duplicate detection** (SHA256) with MySQL caching support
 - 🤖 **AI-powered classification** - 18 categories, 250+ file types
@@ -194,6 +195,10 @@ DB_PASSWORD=your-db-password
 
 # Optional: Slack notifications
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+
+# Optional: local LLM classification fallback (--llm-classify)
+OLLAMA_HOST=http://localhost:11434
+LLM_MODEL=llama3.1:8b
 ```
 
 ---
