@@ -5,6 +5,17 @@ An AI-enhanced file deduplication and organization tool with **atomic package de
 
 > 📘 **[Full User Guide (PDF)](docs/USER_GUIDE.pdf)** — every CLI switch with examples, project structure, version management, and the git workflow. Regenerate after CLI changes with `python scripts/generate_user_guide.py`.
 
+## ⚠️ Before You Run
+
+The tool never deletes anything, but know these before the first real run (full detail in the User Guide, section 2):
+
+1. **Execution COPIES, it does not move.** `--execute` leaves every source file in place — originals are always safe, but the destination volume needs free space roughly equal to the organized data. Duplicates are marked, never deleted.
+2. **Never put `--base-dir` inside the source tree** — the next scan would ingest the organized copies and double-count everything.
+3. **Files above `--metadata-only-size` are not hashed** — identical large videos will *not* be detected as duplicates.
+4. **Hidden files (dotfiles) and `.dedupignore` matches are always skipped** — review `.dedupignore` before assuming full coverage.
+5. **Ctrl+C is only safe with `--use-db`** — with it, re-running the same command resumes from the cache; without it, all progress is lost.
+6. **Always dry-run first** — read the proposed tree before re-running with `--execute`.
+
 ---
 
 ## 🚀 Features
@@ -42,6 +53,11 @@ An AI-enhanced file deduplication and organization tool with **atomic package de
 - Every completed hash commits to MySQL immediately: **Ctrl+C loses at most the files in flight**
 - Re-running the same command resumes from the cache — unchanged files are skipped without reading a byte (`(cached)` in the log)
 - `--batch-size N` (default 500) adds periodic checkpoint summaries during hashing
+
+#### **🔌 Database Circuit Breaker**
+- If MySQL dies mid-run, a circuit breaker trips after 3 consecutive failures: one clear error, then the run continues without persistence (no per-file timeout stalls)
+- `--execute` is refused after a trip, and an in-progress execution stops cleanly before its next file move — file operations are never performed unlogged
+- Connection attempts are bounded to 5 seconds
 
 #### **⏳ Scan Progress Heartbeat**
 - Long directory walks (network shares) log progress every 10 seconds: files matched, directories visited, and the current directory
@@ -105,8 +121,9 @@ An AI-enhanced file deduplication and organization tool with **atomic package de
 
 ### Basic Usage
 ```bash
+# Note: --base-dir must be OUTSIDE the scanned tree (see warnings below)
 python main.py /Volumes/home \
-  --base-dir /Volumes/home/SortedPreview \
+  --base-dir /Volumes/homes/SortedPreview \
   --filter canadytw canamac \
   --dry-run-log \
   --log-format txt \

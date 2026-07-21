@@ -118,6 +118,7 @@ story.append(PageBreak())
 story.append(para("Contents", h1))
 for num, item in enumerate([
     "Introduction",
+    "Before You Run: Pitfalls and Red Alerts",
     "Installation and Setup",
     "Running the Application",
     "Execution Modes",
@@ -162,8 +163,103 @@ for cap in [
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 2
-story.append(para("2. Installation and Setup", h1))
-story.append(para("2.1 Requirements", h2))
+story.append(para("2. Before You Run: Pitfalls and Red Alerts", h1))
+story.append(para(
+    "Read this section before the first run on real data. None of these "
+    "will destroy files — the tool never deletes anything — but several "
+    "can waste hours, fill a disk, or quietly skip data you expected to "
+    "be processed."))
+
+story.append(para("2.1 Red Alerts", h2))
+for label, text in [
+    ("Execution COPIES — it does not move or delete.",
+     "Despite the plan being labeled MOVE, --execute copies files "
+     "(shutil.copy2) and leaves every source file in place. Two "
+     "consequences: your originals are always safe, and the destination "
+     "volume needs free space roughly equal to the total size of the "
+     "organized files. Check free space before executing. Duplicates are "
+     "marked and can be excluded from the plan (--skip-duplicates), but "
+     "they are never deleted from the source."),
+    ("Never put --base-dir inside the source tree.",
+     "If the destination lives under the source (e.g. scanning "
+     "/Volumes/home with --base-dir /Volumes/home/Organized), the next "
+     "scan will ingest the organized copies as new files — every file "
+     "appears twice, every re-run doubles the noise. Always point "
+     "--base-dir outside the tree being scanned, or add the destination "
+     "to .dedupignore."),
+    ("Always dry-run first.",
+     "Run without --execute, read the proposed tree, and only then re-run "
+     "with --execute. The y/N confirmation prompt is the last gate before "
+     "files are copied."),
+    ("Interrupting is only safe with --use-db.",
+     "With the database enabled, Ctrl+C loses at most the files in flight "
+     "and a re-run resumes from the cache. Without it, all progress from "
+     "the run is gone."),
+]:
+    story.append(para(
+        f"<font color='#b71c1c'><b>&bull;&nbsp;RED ALERT:</b></font> "
+        f"<b>{label}</b> {text}"))
+
+story.append(para("2.2 Silent Coverage Gaps", h2))
+story.append(para(
+    "These are by design, but each one means some files are not processed "
+    "the way you might assume:"))
+for label, text in [
+    ("Hidden files are always skipped.",
+     "Anything starting with a dot (.ssh, .config, dotfiles generally) — "
+     "and everything inside hidden directories — is never scanned, "
+     "hashed, or organized."),
+    ("Large files are invisible to duplicate detection.",
+     "Files above --metadata-only-size are not hashed, so two identical "
+     "8GB videos will NOT be flagged as duplicates. Choose the threshold "
+     "with that trade-off in mind."),
+    (".dedupignore excludes silently.",
+     "The project ships ignore patterns (currently 19). Review the file "
+     "before assuming complete coverage of your volume."),
+    ("Directory names can override content classification.",
+     "Files inside directories named src, scripts, code, backup, www, "
+     "software, adobe, microsoft, and similar are classified by location "
+     "(code / application / backup / web) and their structure is "
+     "preserved as-is — a PDF inside /software/ is treated as part of "
+     "that application tree, not as a document."),
+    ("Existing destination files are skipped, not overwritten.",
+     "If a planned destination path already exists, that file is skipped "
+     "with a warning. Safe for re-runs, but a stale earlier copy will "
+     "not be refreshed."),
+]:
+    story.append(para(f"&bull;&nbsp;&nbsp;<b>{label}</b> {text}"))
+
+story.append(para("2.3 Operational Cautions", h2))
+for label, text in [
+    ("Database loss mid-run triggers the circuit breaker.",
+     "After 3 consecutive DB failures the run continues without "
+     "persistence (a dry run still completes), --execute is refused, and "
+     "an in-progress execution stops before its next file move. Work "
+     "done after the breaker trips is not resumable."),
+    ("Very long paths cannot be cached.",
+     "The database path column holds 767 characters; deeper NAS paths "
+     "fail to persist (logged as warnings) and will re-hash on every "
+     "run."),
+    ("--llm-classify needs a running Ollama server.",
+     "Start it with `ollama serve` before the run; otherwise the "
+     "fallback is skipped (gracefully). Each unique unclassifiable file "
+     "costs roughly 1–2 seconds of local inference. All content stays "
+     "on your machine."),
+    ("--gui pauses the run at the end.",
+     "The pipeline does not finish until the preview window is closed — "
+     "avoid --gui for unattended runs."),
+    ("First runs on network volumes are slow.",
+     "Every byte of every sub-threshold file is read over the network "
+     "for hashing. Use --workers 8, --metadata-only-size, and --use-db "
+     "so subsequent runs skip unchanged files. A --max-files 500 trial "
+     "run validates the whole pipeline in minutes."),
+]:
+    story.append(para(f"&bull;&nbsp;&nbsp;<b>{label}</b> {text}"))
+story.append(PageBreak())
+
+# ------------------------------------------------------------------ 3
+story.append(para("3. Installation and Setup", h1))
+story.append(para("3.1 Requirements", h2))
 for req in [
     "Python 3.9 or newer",
     "MySQL 8.x (only when using <b>--use-db</b> and related features)",
@@ -172,7 +268,7 @@ for req in [
 ]:
     story.append(para(f"&bull;&nbsp;&nbsp;{req}"))
 
-story.append(para("2.2 Installing Dependencies", h2))
+story.append(para("3.2 Installing Dependencies", h2))
 story.append(code("""
 # Core install (light — no ML libraries)
 pip install -r requirements.txt
@@ -188,7 +284,7 @@ story.append(para(
     "tagging is simply skipped; without a reachable Ollama server, LLM "
     "classification is skipped."))
 
-story.append(para("2.3 The .env File", h2))
+story.append(para("3.3 The .env File", h2))
 story.append(para(
     "Create a <font face='Courier'>.env</font> file in the project root "
     "(never commit it — it is gitignored):"))
@@ -214,7 +310,7 @@ story.append(para(
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 3
-story.append(para("3. Running the Application", h1))
+story.append(para("4. Running the Application", h1))
 story.append(para(
     "Three equivalent ways to invoke the same command-line interface:"))
 story.append(code("""
@@ -225,7 +321,7 @@ dedupe SOURCE --base-dir DEST                # console script (after pip install
 story.append(para(
     "<b>SOURCE</b> is the directory tree to scan. <b>--base-dir DEST</b> is where "
     "the organized structure will be created. Both are required."))
-story.append(para("3.1 Pipeline Stages", h2))
+story.append(para("4.1 Pipeline Stages", h2))
 story.append(para(
     "Every run flows through the same stages, in order:"))
 for i, (stage, desc) in enumerate([
@@ -255,28 +351,28 @@ for i, (stage, desc) in enumerate([
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 4
-story.append(para("4. Execution Modes", h1))
-story.append(para("4.1 Dry Run (default)", h2))
+story.append(para("5. Execution Modes", h1))
+story.append(para("5.1 Dry Run (default)", h2))
 story.append(para(
     "With no mode flags, the tool scans, hashes, classifies, and prints the "
     "proposed folder tree without touching a single file. Always start here."))
 story.append(code("python main.py /Volumes/home --base-dir /organized"))
-story.append(para("4.2 Logged Dry Run", h2))
+story.append(para("5.2 Logged Dry Run", h2))
 story.append(para(
     "Add <b>--dry-run-log</b> to write the plan to a timestamped "
     "<font face='Courier'>dry_run_preview_*.json</font> (or .txt with "
     "<b>--log-format txt</b>) for later review or diffing between runs."))
 story.append(code("python main.py /Volumes/home --base-dir /organized --dry-run-log --log-format json"))
-story.append(para("4.3 GUI Preview", h2))
+story.append(para("5.3 GUI Preview", h2))
 story.append(para(
     "Add <b>--gui</b> to review the plan in a PySimpleGUI window instead of "
     "reading terminal output."))
-story.append(para("4.4 Execute", h2))
+story.append(para("5.4 Execute", h2))
 story.append(para(
     "Add <b>--execute</b> to apply the plan. The preview is still shown first, "
     "and you must confirm with <b>y</b> at the prompt before any file moves."))
 story.append(code("python main.py /Volumes/home --base-dir /organized --use-db --execute"))
-story.append(para("4.5 Interrupting and Resuming", h2))
+story.append(para("5.5 Interrupting and Resuming", h2))
 story.append(para(
     "With <b>--use-db</b>, long runs are safe to interrupt. Every completed "
     "hash is committed to MySQL immediately, so pressing Ctrl+C during the "
@@ -295,9 +391,9 @@ story.append(para(
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 5
-story.append(para("5. Command-Line Reference", h1))
+story.append(para("6. Command-Line Reference", h1))
 
-story.append(para("5.1 Required Arguments", h2))
+story.append(para("6.1 Required Arguments", h2))
 story.extend(flag("source", "(positional)",
     "Root directory to scan. Must exist and be readable.",
     "python main.py /Volumes/home --base-dir /organized"))
@@ -306,7 +402,7 @@ story.extend(flag("--base-dir", "PATH (required)",
     "and (with --execute) created. Created automatically if the parent "
     "directory exists and is writable."))
 
-story.append(para("5.2 Scan Control", h2))
+story.append(para("6.2 Scan Control", h2))
 story.extend(flag("--filter", "PATTERN [PATTERN ...]",
     "Only include top-level directories whose names match one of the given "
     "patterns. Useful for picking specific user folders out of a large volume.",
@@ -327,7 +423,7 @@ story.extend(flag("--ignore-errors", "",
     "Skip files that cannot be read (permissions, broken links) instead of "
     "aborting the run."))
 
-story.append(para("5.3 Hashing and Duplicates", h2))
+story.append(para("6.3 Hashing and Duplicates", h2))
 story.extend(flag("--metadata-only-size", "SIZE",
     "Files larger than SIZE are recorded metadata-only — no hashing, no "
     "duplicate detection. Accepts B, KB, MB, GB, TB. Use this to keep runs "
@@ -350,7 +446,7 @@ story.extend(flag("--duplicate-report", "FILE",
     "Write a report of all detected duplicate groups to FILE.",
     "python main.py /Volumes/home --base-dir /organized --duplicate-report dupes.txt"))
 
-story.append(para("5.4 Database and AI Features", h2))
+story.append(para("6.4 Database and AI Features", h2))
 story.extend(flag("--use-db", "",
     "Enable MySQL persistence: hash caching across runs, saved "
     "classifications with confidence scores, and the unified file_tags "
@@ -373,7 +469,7 @@ story.extend(flag("--ai-tagging", "(requires --use-db and requirements-ai.txt)",
     "first (or in the same invocation) so base metadata exists.",
     "python main.py /photos --base-dir /organized --use-db --analyze-images --ai-tagging"))
 
-story.append(para("5.5 Output, Notification, and Execution", h2))
+story.append(para("6.5 Output, Notification, and Execution", h2))
 story.extend(flag("--dry-run-log", "",
     "Write the preview plan to a timestamped dry_run_preview_* file."))
 story.extend(flag("--log-format", "json | txt (default: json)",
@@ -391,7 +487,7 @@ story.extend(flag("--write-metadata", "",
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 6
-story.append(para("6. Common Recipes", h1))
+story.append(para("7. Common Recipes", h1))
 story.append(para("<b>First look at a messy volume</b> — cheap, safe, fast:"))
 story.append(code("python main.py /Volumes/home --base-dir /tmp/preview --max-files 500"))
 story.append(para("<b>Full-featured dry run on a NAS</b> — database caching, LLM "
@@ -421,7 +517,7 @@ python main.py /Volumes/home --base-dir /organized \\
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 7
-story.append(para("7. Project Structure", h1))
+story.append(para("8. Project Structure", h1))
 story.append(code("""
 File_Deduplification/
 +-- main.py                  # CLI entry point (delegates to core/main.py)
@@ -482,12 +578,12 @@ story.append(para(
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 8
-story.append(para("8. Version Management and Releases", h1))
+story.append(para("9. Version Management and Releases", h1))
 story.append(para(
     "The project version lives in <font face='Courier'>scripts/version.yaml</font> "
     "and is read by <font face='Courier'>scripts/read_version.py</font>. "
     "<font face='Courier'>setup.py</font> carries the same version for packaging."))
-story.append(para("8.1 Bumping the Version", h2))
+story.append(para("9.1 Bumping the Version", h2))
 story.append(code(f"""
 make bump                 # bump the patch version (currently {VERSION}),
                           #   commit, and push
@@ -498,14 +594,14 @@ git add scripts/version.yaml
 git commit -m "Bump patch version"
 git push origin main
 """))
-story.append(para("8.2 Updating the Changelog", h2))
+story.append(para("9.2 Updating the Changelog", h2))
 story.append(code("""
 make changelog            # regenerate from commit history:
                           #   scripts/gen_changelog.py > docs/CHANGELOG_LAST.md
                           #   scripts/gen_changelog.py >> CHANGELOG.md
                           #   then commits and pushes
 """))
-story.append(para("8.3 Cutting a Release", h2))
+story.append(para("9.3 Cutting a Release", h2))
 story.append(code("""
 make release              # 1. verifies no staged file exceeds 100MB
                           # 2. commits with the current version number
@@ -520,12 +616,12 @@ story.append(para(
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 9
-story.append(para("9. Git Workflow: Committing and Pushing", h1))
+story.append(para("10. Git Workflow: Committing and Pushing", h1))
 story.append(para(
     "The repository is hosted on <b>GitHub</b> at "
     "<font face='Courier'>github.com/phelgetar/File_Deduplification</font>, "
     "with <font face='Courier'>main</font> as the working branch."))
-story.append(para("9.1 Day-to-Day Commits", h2))
+story.append(para("10.1 Day-to-Day Commits", h2))
 story.append(code("""
 git status                          # review what changed
 git add <files>                     # stage specific files (or -A for all)
@@ -538,7 +634,7 @@ story.append(para(
     "<font face='Courier'>fix</font>, <font face='Courier'>docs</font>, "
     "<font face='Courier'>chore</font>, <font face='Courier'>refactor</font>), "
     "an optional scope in parentheses, and a concise imperative summary."))
-story.append(para("9.2 The Pre-Commit Size Guard", h2))
+story.append(para("10.2 The Pre-Commit Size Guard", h2))
 story.append(para(
     "A pre-commit hook (symlinked to "
     "<font face='Courier'>scripts/validate_large_files.sh</font>) blocks any "
@@ -546,7 +642,7 @@ story.append(para(
     "commit is rejected, remove the offending file from staging; generated "
     "artifacts belong in <font face='Courier'>output/</font>, which is "
     "gitignored."))
-story.append(para("9.3 What Never Gets Committed", h2))
+story.append(para("10.3 What Never Gets Committed", h2))
 for item in [
     "<font face='Courier'>.env</font> — contains database credentials",
     "<font face='Courier'>output/</font> — dry-run previews and reports",
@@ -562,8 +658,8 @@ story.append(para(
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 10
-story.append(para("10. Tests and Utility Scripts", h1))
-story.append(para("10.1 Script-Style Tests (run directly)", h2))
+story.append(para("11. Tests and Utility Scripts", h1))
+story.append(para("11.1 Script-Style Tests (run directly)", h2))
 story.append(code("""
 python tests/test_llm_classifier.py     # LLM fallback (skips if Ollama is down)
 python tests/test_atomic_packages.py    # atomic .app/.pkg detection
@@ -572,13 +668,13 @@ python tests/test_context_detection.py  # semantic context rules
 python tests/test_folder_mapping.py     # custom folder mapping rules
 python tests/test_image_metadata.py     # image metadata extraction
 """))
-story.append(para("10.2 Pytest-Style Tests", h2))
+story.append(para("11.2 Pytest-Style Tests", h2))
 story.append(code("""
 pip install pytest
 pytest tests/test_scanner.py tests/test_hasher.py \\
        tests/test_classifier.py tests/test_organizer.py tests/test_executor.py
 """))
-story.append(para("10.3 Utility Scripts", h2))
+story.append(para("11.3 Utility Scripts", h2))
 story.append(code("""
 python scripts/reclassify_files.py      # re-classify files already in the DB
                                         #   (after classifier rule changes)
@@ -588,8 +684,8 @@ python scripts/generate_user_guide.py   # regenerate this PDF
 """))
 story.append(PageBreak())
 
-# ------------------------------------------------------------------ 11
-story.append(para("11. Troubleshooting", h1))
+# ------------------------------------------------------------------ 12
+story.append(para("12. Troubleshooting", h1))
 rows = [
     ["Symptom", "Likely Cause and Fix"],
     ["Database initialization fails at startup",

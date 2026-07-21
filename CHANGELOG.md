@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### 🛡️ Resilience
+
+#### **Database Circuit Breaker + Fail-Fast Execution**
+- ✨ **NEW**: After 3 consecutive DB failures mid-run, a circuit breaker trips — one clear error, then all DB helpers become instant no-ops (no per-file timeout stalls); dry runs still complete
+- ✨ **NEW**: `--execute` is refused after a trip; an in-progress execution stops cleanly before its next file move (operations are never performed unlogged)
+- 🔧 DB connection attempts bounded to 5 seconds (`connect_timeout`)
+
+### 📘 Documentation
+- ✨ **NEW**: User guide section 2 "Before You Run: Pitfalls and Red Alerts" — execution copies (not moves), base-dir placement, duplicate-detection blind spots, hidden-file skips, resume requirements, operational cautions
+- 🔧 README: "Before You Run" warning summary; fixed the basic example, which placed `--base-dir` inside the scanned tree
+
 ## [v0.10.0] – 2026-07-20
 
 ### 🚀 Major Features
