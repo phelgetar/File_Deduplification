@@ -305,6 +305,16 @@ story.extend(flag("--metadata-only-size", "SIZE",
     "duplicate detection. Accepts B, KB, MB, GB, TB. Use this to keep runs "
     "fast on volumes full of video files or disk images.",
     "python main.py /Videos --base-dir /organized --metadata-only-size 1GB"))
+story.extend(flag("--workers", "N (default: 4)",
+    "Number of parallel hashing threads. Hashing is I/O-bound, so multiple "
+    "threads significantly speed up network volumes; try 8 for a fast NAS.",
+    "python main.py /Volumes/home --base-dir /organized --use-db --workers 8"))
+story.extend(flag("--batch-size", "N (default: 500)",
+    "Files per hashing batch. Every completed file is committed to the "
+    "database immediately (with --use-db), so an interrupted run (Ctrl+C) "
+    "loses at most the files in flight; batches add periodic checkpoint "
+    "summaries to the log. Re-running the same command after an interruption "
+    "resumes from the cache — unchanged files are skipped without re-reading."))
 story.extend(flag("--skip-duplicates", "",
     "Drop duplicate files from the plan entirely; only unique files are "
     "organized. Without this flag, duplicates are kept and marked."))

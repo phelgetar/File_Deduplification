@@ -106,6 +106,8 @@ def main():
     parser.add_argument("--ignore-errors", action="store_true", help="Skip files with access errors")
     parser.add_argument("--use-db", action="store_true", help="Enable database logging")
     parser.add_argument("--metadata-only-size", type=str, help="Files larger than this size will only have metadata stored (no hashing). Format: 75MB, 1GB, etc. Default: no limit")
+    parser.add_argument("--workers", type=int, default=4, help="Number of parallel hashing threads (default: 4). Higher values can speed up network volumes; try 8 for a fast NAS.")
+    parser.add_argument("--batch-size", type=int, default=500, help="Files per hashing batch checkpoint (default: 500). Each completed file is saved to the DB immediately; batches add periodic progress summaries.")
     parser.add_argument("--skip-duplicates", action="store_true", help="Skip duplicate files (only process unique files)")
     parser.add_argument("--duplicate-report", type=str, help="Generate duplicate report and save to file")
     parser.add_argument("--analyze-images", action="store_true", help="Extract and store comprehensive metadata from image files")
@@ -215,7 +217,16 @@ def main():
     print(f"🧮 Files matched: {len(files)}")
 
     print("🔑 Generating file hashes...")
-    hashed_files = generate_hashes(files, use_db=args.use_db, metadata_only_size=metadata_only_size)
+    try:
+        hashed_files = generate_hashes(files, use_db=args.use_db,
+                                       metadata_only_size=metadata_only_size,
+                                       workers=args.workers,
+                                       batch_size=args.batch_size)
+    except KeyboardInterrupt:
+        print("\n🛑 Run interrupted. All completed hashes are saved"
+              + (" in the database — re-run the same command to resume." if args.use_db
+                 else ". Enable --use-db to make interrupted runs resumable."))
+        sys.exit(130)
     print(f"📂 Files hashed: {len(hashed_files)}")
 
     print("🔍 Detecting duplicates...")
