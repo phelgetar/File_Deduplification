@@ -13,10 +13,11 @@
 # Author: Tim Canady
 # Created: 2025-09-28
 #
-# Version: 0.7.1
-# Last Modified: 2025-11-21 by Tim Canady
+# Version: 0.8.0
+# Last Modified: 2026-07-20 by Tim Canady
 #
 # Revision History:
+# - 0.8.0 (2026-07-20): Added periodic scan progress heartbeat (every 10s) so long walks over network volumes are not silent — Tim Canady
 # - 0.7.1 (2025-11-21): Added .framework to atomic packages, improved timeout error handling — Tim Canady
 # - 0.7.0 (2025-11-14): Added comprehensive disk image support (.iso, .img, .vhd, .vmdk, .vdi, .ova, .ovf, .toast, .cdr, .nrg, .mds, .mdf) — Tim Canady
 # - 0.6.2 (2025-11-14): Added .mpkg to atomic package detection — Tim Canady
@@ -30,9 +31,24 @@
 from pathlib import Path
 import logging
 import os
+import time
 from fnmatch import fnmatch
 
 logger = logging.getLogger(__name__)
+
+# Seconds between scan progress heartbeat log lines
+PROGRESS_INTERVAL_SECONDS = 10
+
+
+def _heartbeat(progress, results_count, current_path):
+    """Log a progress line if PROGRESS_INTERVAL_SECONDS have elapsed."""
+    now = time.monotonic()
+    if now - progress["last_log"] >= PROGRESS_INTERVAL_SECONDS:
+        progress["last_log"] = now
+        logger.info(
+            f"⏳ Scanning... {results_count:,} files matched, "
+            f"{progress['dirs']:,} directories visited (now in: {current_path})"
+        )
 
 def load_ignore_patterns(ignore_file=".dedupignore"):
     """
@@ -200,6 +216,10 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
     # Track paths we've already processed to avoid duplicates
     processed_paths = set()
 
+    # Progress heartbeat state for long walks (e.g., network volumes)
+    scan_start = time.monotonic()
+    progress = {"last_log": scan_start, "dirs": 0}
+
     # If filter_names provided, only scan those subdirectories
     if filter_names:
         # Get direct children of root that match filter
@@ -211,6 +231,8 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
                     for dirpath, dirnames, filenames in os.walk(filter_path, topdown=True, onerror=None):
                         try:
                             current_path = Path(dirpath)
+                            progress["dirs"] += 1
+                            _heartbeat(progress, len(results), current_path)
 
                             # Skip hidden directories
                             if is_hidden(current_path):
@@ -306,6 +328,8 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
             for dirpath, dirnames, filenames in os.walk(root_path, topdown=True, onerror=None):
                 try:
                     current_path = Path(dirpath)
+                    progress["dirs"] += 1
+                    _heartbeat(progress, len(results), current_path)
 
                     # Skip hidden directories
                     if is_hidden(current_path):
@@ -400,5 +424,11 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
 
     if atomic_package_count > 0:
         logger.info(f"Found {atomic_package_count} atomic packages (.app, .framework, .pkg, .dmg) treated as single units")
+
+    elapsed = time.monotonic() - scan_start
+    logger.info(
+        f"✅ Scan complete: {len(results):,} files matched across "
+        f"{progress['dirs']:,} directories in {elapsed:.1f}s"
+    )
 
     return results
