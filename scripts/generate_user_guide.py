@@ -20,8 +20,10 @@
 # Version: 1.0.0
 ###################################################################
 
+from datetime import date
 from pathlib import Path
 
+import yaml
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -32,6 +34,11 @@ from reportlab.platypus import (
 )
 
 OUTPUT = Path(__file__).parent.parent / "docs" / "USER_GUIDE.pdf"
+
+# Single source of truth for the project version
+_version_file = Path(__file__).parent / "version.yaml"
+VERSION = yaml.safe_load(_version_file.read_text())["version"]
+BUILD_DATE = date.today().strftime("%B %Y")
 
 NAVY = colors.HexColor("#1a3a5c")
 STEEL = colors.HexColor("#2e6da4")
@@ -102,7 +109,7 @@ story.append(para(
     ParagraphStyle("CoverBlurb", parent=body, alignment=1, fontSize=11,
                    leading=16)))
 story.append(Spacer(1, 2.0 * inch))
-story.append(para("Version 0.4.11 &nbsp;&bull;&nbsp; July 2026 &nbsp;&bull;&nbsp; Tim Canady",
+story.append(para(f"Version {VERSION} &nbsp;&bull;&nbsp; {BUILD_DATE} &nbsp;&bull;&nbsp; Tim Canady",
                   ParagraphStyle("CoverMeta", parent=body, alignment=1,
                                  textColor=colors.grey)))
 story.append(PageBreak())
@@ -475,8 +482,8 @@ story.append(para(
     "and is read by <font face='Courier'>scripts/read_version.py</font>. "
     "<font face='Courier'>setup.py</font> carries the same version for packaging."))
 story.append(para("8.1 Bumping the Version", h2))
-story.append(code("""
-make bump                 # bump the patch version (0.4.11 -> 0.4.12),
+story.append(code(f"""
+make bump                 # bump the patch version (currently {VERSION}),
                           #   commit, and push
 
 # What it runs under the hood:

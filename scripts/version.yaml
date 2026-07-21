@@ -1,12 +1,17 @@
 created: 2025-09-28
-last_modified: 2025-11-04
+last_modified: '2026-07-20'
 maintainer: Tim Canady
 project: File Deduplication
 revision_history:
+- date: '2026-07-20'
+  notes: Local LLM classification fallback (Ollama), parallel resumable hashing, scan
+    heartbeat, PDF user guide; unified version streams (was 0.4.11 in version.yaml
+    vs 0.9.0 in changelog)
+  version: 0.10.0
 - date: 2025-11-04
   notes: Auto-synced update, hashing and scanning modules implemented
   version: 0.4.1
 - date: 2025-09-28
   notes: Initial project structure defined
   version: 0.1.1
-version: 0.4.11
+version: 0.10.0

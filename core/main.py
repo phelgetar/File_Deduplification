@@ -14,10 +14,11 @@
 # Author: Tim Canady
 # Created: 2025-09-28
 #
-# Version: 0.9.0
-# Last Modified: 2025-11-19 by Tim Canady
+# Version: 0.10.0
+# Last Modified: 2026-07-20 by Tim Canady
 #
 # Revision History:
+# - 0.10.0 (2026-07-20): Added --llm-classify (local Ollama fallback), --workers/--batch-size (parallel resumable hashing), graceful Ctrl+C handling — Tim Canady
 # - 0.9.0 (2025-11-19): Added AI-based tagging for ALL files (not just images); Fixed root_folder double-nesting issue — Tim Canady
 # - 0.8.0 (2025-11-15): Added --file-types filter for selective scanning by file type groups — Tim Canady
 # - 0.7.0 (2025-11-15): Added AI content tagging with --ai-tagging flag — Tim Canady

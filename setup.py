@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="file-deduplicator",
-    version="0.4.11",
+    version="0.10.0",
     description="AI-powered tool for file deduplication, classification, and sorting",
     author="Tim Canady",
     packages=find_packages(exclude=["tests", "tests.*"]),
