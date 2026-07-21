@@ -1,73 +1,30 @@
-## [v0.8.0]
-– 2025-11-14
+## [v0.10.0] – 2026-07-20
 
-### 🚀 Major Performance Enhancement
+### 🚀 Major Features
 
-#### **Atomic Package Detection**
-- ✨ **NEW**: Automatic detection and handling of macOS packages as single units
-  - Treats `.app`, `.pkg`, and `.dmg` files as atomic packages
-  - Stops scanning at package boundary instead of recursing into thousands of internal files
-  - Hashes entire package directory as single unit for consistent duplicate detection
-  - Delivers **18-60x performance improvement** when scanning directories with applications
+#### **Local LLM Classification Fallback**
+- ✨ **NEW**: `--llm-classify` flag — files that fall through every rule-based tier are classified by a local Ollama model (default `llama3.1:8b`)
+  - Uses filename, path context, and a 1KB content snippet for text-like files; binary content detected and skipped
+  - Structured output constrained to the known category enum — the model cannot invent categories
+  - Per-run cache keyed by content hash: duplicates cost one LLM call
+  - LLM confidence persisted to the database instead of the fixed 0.8
+  - Degrades gracefully when the Ollama server is unreachable
+  - Configure via `OLLAMA_HOST` / `LLM_MODEL` in `.env`
 
-#### **Smart Directory Hashing**
-- ✨ **NEW**: `hash_directory()` function for consistent package hashing
-  - Recursively hashes all files within a directory in deterministic order
-  - Includes relative file paths in hash for structural integrity
-  - Produces consistent SHA256 hash regardless of scan order
-  - Same package always generates identical hash for reliable duplicate detection
+#### **Parallel, Resumable Hashing**
+- ✨ **NEW**: `--workers N` (default 4) — SHA256 hashing runs on a thread pool; large speedup on network volumes
+- ✨ **NEW**: `--batch-size N` (default 500) — periodic checkpoint summaries during hashing
+- ✨ **NEW**: Resume from the database cache — unchanged files (path + mtime match) are skipped without reading a byte, logged as `(cached)`
+- 🐛 **FIX**: `get_cached_hash()` existed but was never called — restarts re-hashed everything
+- 🐛 **FIX**: mtimes are normalized to whole seconds; MySQL DATETIME truncation silently defeated the cache equality check
+- ✨ **NEW**: Graceful Ctrl+C — interrupted runs exit cleanly, report persisted progress, and resume on re-run
 
-#### **Enhanced Scanner**
-- ✨ **NEW**: `is_atomic_package()` detection function
-  - Automatically identifies .app, .pkg, and .dmg extensions
-  - Tracks processed paths to prevent duplicate scanning
-  - Logs atomic packages found during scan
-  - Example: `HP Easy Start.app` with 2,500 internal files scanned as 1 unit
+#### **Scan Progress Heartbeat**
+- ✨ **NEW**: Long directory walks log progress every 10 seconds (files matched, directories visited, current directory)
+- ✨ **NEW**: Completion summary with totals and elapsed time
 
-### 📊 Performance Impact
-
-**Real-world example:**
-```
-HP Easy Start.app (250MB, 2,500 files)
-- Without atomic detection: ~5 minutes
-- With atomic detection: ~5 seconds
-- Speedup: 60x faster!
-
-/Applications directory (100 apps)
-- Before: 45 minutes (45,000+ files)
-- After: 2.5 minutes (150 items)
-- Improvement: 18x faster!
-```
-
-### 🧪 Testing
-
-- ✨ **NEW**: Comprehensive test suite (`test_atomic_packages.py`)
-  - Test 1: Atomic package detection (.app, .pkg, .dmg)
-  - Test 2: Scanner skips internal files
-  - Test 3: Directory hashing consistency
-  - Test 4: End-to-end pipeline verification
-
-### 📝 Documentation
-
-- ✨ **NEW**: [ATOMIC_PACKAGES_GUIDE.md](ATOMIC_PACKAGES_GUIDE.md) - Complete guide to atomic package handling
-  - How atomic packages work
-  - Performance comparisons
-  - Usage examples
-  - Troubleshooting guide
-  - Technical implementation details
-
-### 🔧 Code Changes
-
-- **core/scanner.py v0.6.0**
-  - Added `is_atomic_package()` function
-  - Modified `scan_directory()` to detect and skip atomic package internals
-  - Added tracking for processed paths to avoid duplicates
-  - Enhanced logging for atomic packages
-
-- **core/hasher.py v0.6.0**
-  - Added `hash_directory()` function for directory hashing
-  - Modified `generate_hashes()` to detect directories vs files
-  - Added support for hashing entire packages as single units
-  - Calculates total package size for metadata-only threshold
-
----
+#### **Documentation & Repository**
+- ✨ **NEW**: `docs/USER_GUIDE.pdf` — full user guide (every switch with examples, project structure, versioning, git workflow); regenerate with `python scripts/generate_user_guide.py`
+- 🔧 Repository restructure: docs into `docs/`, SQL into `database/{schema,migrations,queries}`, tests into `tests/`, requirements split (`requirements-ai.txt` for the CLIP stack)
+- 🔧 Activated the 100MB pre-commit size guard (hook was never executable)
+- 🔧 Version streams unified: `version.yaml`/`setup.py` (0.4.11) and CHANGELOG/`main.py` (0.9.0) now both track v0.10.0
