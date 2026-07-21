@@ -10,8 +10,11 @@ An AI-enhanced file deduplication and organization tool with **atomic package de
 ## 🚀 Features
 
 ### Core Capabilities
-- 🔍 **Recursive file scanning** with support for regex and wildcard filters
+- 🔍 **Recursive file scanning** with support for regex and wildcard filters, plus a 10-second progress heartbeat on long walks
 - 🦙 **Local LLM classification fallback** (`--llm-classify`) - files the rule-based classifier can't place are classified by a local Ollama model from filename, path, and content; nothing leaves your machine
+- 🧵 **Parallel hashing** (`--workers`) - multithreaded SHA256 hashing overlaps network reads for a large speedup on NAS volumes
+- ♻️ **Resumable runs** - every hash commits to the database immediately; Ctrl+C exits cleanly and re-running the same command skips unchanged files via the cache
+- 💾 **Batch checkpoints** (`--batch-size`) - periodic progress summaries during hashing
 - 📦 **Atomic package detection** - treats .app, .pkg, .dmg as single units (18-60x faster!)
 - 🔑 **Hash-based duplicate detection** (SHA256) with MySQL caching support
 - 🤖 **AI-powered classification** - 18 categories, 250+ file types
@@ -23,6 +26,29 @@ An AI-enhanced file deduplication and organization tool with **atomic package de
 - 💾 **Logging** in `.json` or `.txt` formats
 - 🧰 **Versioned Git workflow** with release automation
 - ♻️ **Patch and rollback support** for safe updates
+
+### 🆕 New in July 2026
+
+#### **🦙 Local LLM Classification Fallback**
+- New `--llm-classify` flag sends files no rule can classify to a local Ollama model (default `llama3.1:8b`)
+- Uses filename, path context, and a 1KB content snippet for text-like files; binary content is detected and skipped
+- Structured output constrained to the known category list — the model cannot invent categories
+- Results cached per content hash: duplicates cost a single LLM call
+- Degrades gracefully when the Ollama server is not running
+- Configure via `OLLAMA_HOST` / `LLM_MODEL` in `.env`
+
+#### **🧵 Parallel Hashing with Resume**
+- `--workers N` (default 4) hashes files on a thread pool — a large speedup on network volumes; try 8 for a fast NAS
+- Every completed hash commits to MySQL immediately: **Ctrl+C loses at most the files in flight**
+- Re-running the same command resumes from the cache — unchanged files are skipped without reading a byte (`(cached)` in the log)
+- `--batch-size N` (default 500) adds periodic checkpoint summaries during hashing
+
+#### **⏳ Scan Progress Heartbeat**
+- Long directory walks (network shares) log progress every 10 seconds: files matched, directories visited, and the current directory
+- A completion summary reports totals and elapsed time
+
+#### **📘 PDF User Guide**
+- [docs/USER_GUIDE.pdf](docs/USER_GUIDE.pdf) documents every switch with examples; regenerate with `python scripts/generate_user_guide.py`
 
 ### 🆕 New in v0.9.0
 
@@ -86,6 +112,18 @@ python main.py /Volumes/home \
   --log-format txt \
   --notify slack \
   --gui
+```
+
+### Recommended for NAS volumes (parallel + resumable + LLM)
+```bash
+# Interrupt with Ctrl+C any time — re-run the same command to resume
+python main.py /Volumes/home \
+  --base-dir /Volumes/homes/Organized \
+  --use-db \
+  --llm-classify \
+  --metadata-only-size 100MB \
+  --workers 8 \
+  --dry-run-log
 ```
 
 ### With Intelligent Size Management (NEW!)

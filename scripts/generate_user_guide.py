@@ -138,8 +138,9 @@ story.append(para("Key capabilities:", body))
 for cap in [
     "<b>Atomic package detection</b> — macOS bundles (.app, .pkg, .dmg) are treated "
     "as single units instead of thousands of internal files (18–60x faster).",
-    "<b>Hash caching</b> — with a MySQL database enabled, files are only hashed once "
-    "across runs.",
+    "<b>Parallel, resumable hashing</b> — SHA256 hashing runs on a thread pool "
+    "(--workers), every hash commits to MySQL immediately, and interrupted runs "
+    "resume from the cache: unchanged files are never hashed twice.",
     "<b>Rule-based classification</b> — MIME types, extensions, filenames, and "
     "directory patterns place files into categories such as document, financial, "
     "code, or education.",
@@ -223,9 +224,13 @@ story.append(para(
 for i, (stage, desc) in enumerate([
     ("Scan", "recursively collect files, honoring --filter, --file-types, "
              "--max-files, and .dedupignore patterns; atomic packages are "
-             "collapsed into single units."),
-    ("Hash", "SHA256 each file (or record metadata only above the "
-             "--metadata-only-size threshold); cached in MySQL with --use-db."),
+             "collapsed into single units. On walks longer than 10 seconds a "
+             "progress heartbeat logs files matched, directories visited, and "
+             "the current location."),
+    ("Hash", "SHA256 each file on a thread pool (--workers, default 4), or "
+             "record metadata only above the --metadata-only-size threshold. "
+             "With --use-db every hash commits immediately and files unchanged "
+             "since a previous run are skipped via the cache."),
     ("Deduplicate", "group files by hash; mark duplicates and optionally "
                     "report or drop them."),
     ("Classify", "rule-based category assignment, with optional local-LLM "
@@ -264,6 +269,16 @@ story.append(para(
     "Add <b>--execute</b> to apply the plan. The preview is still shown first, "
     "and you must confirm with <b>y</b> at the prompt before any file moves."))
 story.append(code("python main.py /Volumes/home --base-dir /organized --use-db --execute"))
+story.append(para("4.5 Interrupting and Resuming", h2))
+story.append(para(
+    "With <b>--use-db</b>, long runs are safe to interrupt. Every completed "
+    "hash is committed to MySQL immediately, so pressing Ctrl+C during the "
+    "hashing stage loses at most the handful of files in flight. The run "
+    "exits cleanly with a message confirming how much work was persisted. "
+    "To resume, simply re-run the same command: files whose path and "
+    "modification time match a cached entry are skipped without reading a "
+    "byte (marked \"(cached)\" in the log), and the run picks up where it "
+    "left off. Without --use-db, interrupted work is not persisted."))
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 5
@@ -366,11 +381,12 @@ story.append(PageBreak())
 story.append(para("6. Common Recipes", h1))
 story.append(para("<b>First look at a messy volume</b> — cheap, safe, fast:"))
 story.append(code("python main.py /Volumes/home --base-dir /tmp/preview --max-files 500"))
-story.append(para("<b>Full-featured dry run</b> — database caching, LLM fallback, "
-                  "large-file handling, saved log:"))
+story.append(para("<b>Full-featured dry run on a NAS</b> — database caching, LLM "
+                  "fallback, large-file handling, 8 parallel hashing threads, "
+                  "saved log. Safe to Ctrl+C and re-run to resume:"))
 story.append(code("""
 python main.py /Volumes/home --base-dir /organized \\
-  --use-db --llm-classify --metadata-only-size 100MB --dry-run-log
+  --use-db --llm-classify --metadata-only-size 100MB --workers 8 --dry-run-log
 """))
 story.append(para("<b>Photo library pass</b> — images only, with metadata and "
                   "AI content tags:"))
@@ -578,8 +594,17 @@ rows = [
      "The pre-commit size guard fired. Unstage the file; large artifacts "
      "belong in output/ (gitignored)."],
     ["Run is slow on huge video collections",
-     "Use --metadata-only-size (e.g. 1GB) to skip hashing large files, and "
-     "--use-db so hashes are cached across runs."],
+     "Use --metadata-only-size (e.g. 1GB) to skip hashing large files, "
+     "--workers 8 to parallelize network reads, and --use-db so hashes are "
+     "cached across runs."],
+    ["Scan phase seems silent or hung",
+     "The walk logs a heartbeat every 10 seconds (files matched, directories "
+     "visited, current location). If heartbeats stop advancing, check the "
+     "directory named in the last one — likely a dead mount or permission "
+     "stall."],
+    ["Run was interrupted (Ctrl+C, crash, reboot)",
+     "With --use-db, completed work is already saved. Re-run the same "
+     "command; unchanged files show '(cached)' and are skipped instantly."],
     ["Everything classifies as 'code' or 'application'",
      "The path contains a structure-preserving directory name (src, scripts, "
      "software, adobe, ...). This is by design: those trees are preserved "
