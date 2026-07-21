@@ -13,16 +13,19 @@
 # Author: Tim Canady
 # Created: 2025-11-04
 #
-# Version: 0.5.0
-# Last Modified: 2025-11-12 by Tim Canady
+# Version: 0.6.0
+# Last Modified: 2026-07-20 by Tim Canady
 #
 # Revision History:
+# - 0.6.0 (2026-07-20): Circuit breaker — after repeated consecutive DB failures mid-run, stop attempting DB writes (no per-file timeout stalls); bounded connect timeout — Tim Canady
 # - 0.5.0 (2025-11-12): Fixed schema, removed FK constraints, added classification save — Tim Canady
 # - 0.2.0 (2025-11-06): Added context manager support for sessions — Tim Canady
 # - 0.1.0 (2025-11-04): Initial DB ORM and integration logic — Tim Canady
 ###################################################################
 
+import functools
 import os
+import threading
 from dotenv import load_dotenv
 from datetime import datetime
 from urllib.parse import quote_plus
@@ -62,10 +65,73 @@ DATABASE_URL = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:{db_port
 safe_url = DATABASE_URL.replace(encoded_password, "***MASKED***")
 logger.debug(f"Database URL: {safe_url}")
 
-# Set up engine and session
-engine = create_engine(DATABASE_URL, echo=False)
+# Set up engine and session. connect_timeout bounds how long a call can
+# stall when the server is unreachable (default would be ~10s per attempt).
+engine = create_engine(DATABASE_URL, echo=False,
+                       connect_args={"connect_timeout": 5})
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
+
+# --- Circuit breaker ---
+#
+# If the database dies mid-run, every helper call would otherwise stall for
+# a full connection timeout — per file, across thousands of files. After
+# DB_FAILURE_THRESHOLD consecutive failures the breaker trips: one loud
+# error is logged and all further DB helpers become instant no-ops for the
+# rest of the run. main.py/executor.py consult is_db_down() to fail fast
+# before and during --execute, where losing the operation log matters.
+
+DB_FAILURE_THRESHOLD = 3
+
+_breaker = {"failures": 0, "down": False}
+_breaker_lock = threading.Lock()
+
+
+def is_db_down():
+    """True once the circuit breaker has tripped for this run."""
+    return _breaker["down"]
+
+
+def _record_success():
+    with _breaker_lock:
+        _breaker["failures"] = 0
+
+
+def _record_failure(func_name, error):
+    with _breaker_lock:
+        _breaker["failures"] += 1
+        tripped = (not _breaker["down"]
+                   and _breaker["failures"] >= DB_FAILURE_THRESHOLD)
+        if tripped:
+            _breaker["down"] = True
+    if tripped:
+        logger.error(
+            f"🔌 Database circuit breaker tripped after {DB_FAILURE_THRESHOLD} "
+            f"consecutive failures (last: {func_name}: {error}). Continuing "
+            f"WITHOUT persistence — no hashes, classifications, or tags will "
+            f"be saved from this point, and this run will not be resumable "
+            f"past here. File execution (--execute) will be refused.")
+    else:
+        logger.warning(f"⚠️ DB operation {func_name} failed: {error}")
+
+
+def _db_guard(default=None):
+    """Wrap a DB helper: no-op instantly once the breaker is down, and
+    swallow failures (counting them toward the breaker) otherwise."""
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            if _breaker["down"]:
+                return default
+            try:
+                result = fn(*args, **kwargs)
+                _record_success()
+                return result
+            except Exception as e:
+                _record_failure(fn.__name__, e)
+                return default
+        return wrapper
+    return decorator
 
 # --- ORM Models ---
 
@@ -123,6 +189,7 @@ class FileTag(Base):
 def init_db():
     Base.metadata.create_all(engine)
 
+@_db_guard(default=None)
 def cache_file_entry(path, size, mtime, hash_val, metadata_only=False):
     with Session() as session:
         file = session.query(File).filter_by(path=str(path)).first()
@@ -138,6 +205,7 @@ def cache_file_entry(path, size, mtime, hash_val, metadata_only=False):
         session.commit()
         return file
 
+@_db_guard(default=None)
 def get_cached_hash(path, mtime):
     with Session() as session:
         file = session.query(File).filter_by(path=str(path)).first()
@@ -145,6 +213,7 @@ def get_cached_hash(path, mtime):
             return file.hash
         return None
 
+@_db_guard(default=None)
 def mark_duplicate(file_path, duplicate_of):
     with Session() as session:
         file = session.query(File).filter_by(path=str(file_path)).first()
@@ -153,6 +222,7 @@ def mark_duplicate(file_path, duplicate_of):
             file.duplicate_of = duplicate_of
             session.commit()
 
+@_db_guard(default=None)
 def log_operation(file_path, action, target_path):
     with Session() as session:
         file = session.query(File).filter_by(path=str(file_path)).first()
@@ -161,6 +231,7 @@ def log_operation(file_path, action, target_path):
             session.add(op)
             session.commit()
 
+@_db_guard(default=None)
 def save_classification(file_path, category, owner=None, year=None, confidence=None):
     """Save or update file classification in database."""
     with Session() as session:
@@ -187,6 +258,7 @@ def save_classification(file_path, category, owner=None, year=None, confidence=N
             session.commit()
 
 
+@_db_guard(default=0)
 def save_file_tags(file_path, tags, tag_source='ai_tagger', confidence=1.0):
     """
     Save tags for a file in the database.
@@ -244,6 +316,7 @@ def save_file_tags(file_path, tags, tag_source='ai_tagger', confidence=1.0):
         return tags_saved
 
 
+@_db_guard(default=[])
 def get_file_tags(file_path, tag_source=None):
     """
     Retrieve tags for a file from the database.

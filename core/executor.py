@@ -13,10 +13,11 @@
 # Author: Tim Canady
 # Created: 2025-09-28
 #
-# Version: 0.5.0
-# Last Modified: 2025-11-12 by Tim Canady
+# Version: 0.6.0
+# Last Modified: 2026-07-20 by Tim Canady
 #
 # Revision History:
+# - 0.6.0 (2026-07-20): Fail fast if the DB circuit breaker trips mid-execution — stop before the next file move rather than continue unlogged — Tim Canady
 # - 0.5.0 (2025-11-12): Added DB logging and improved error handling — Tim Canady
 # - 0.4.3 (2025-11-06): Basic file operation logger added — Tim Canady
 # - 0.1.0 (2025-09-28): Initial executor implementation — Tim Canady
@@ -44,9 +45,19 @@ def execute_plan(plan: List[Tuple[FileInfo, Path]], write_metadata: bool = False
 
     # Import DB function if needed
     if use_db:
-        from core.db import log_operation
+        from core.db import log_operation, is_db_down
 
     for file_info, dest in plan:
+        # Fail fast: if the database died mid-execution, stop cleanly before
+        # the next move rather than continue with unlogged operations.
+        if use_db and is_db_down():
+            logger.error(
+                "🛑 Database connection lost mid-execution (circuit breaker "
+                "tripped). Stopping before the next file operation — "
+                f"{success_count} operations completed and logged so far. "
+                "Restore the database and re-run to continue; already-copied "
+                "files are skipped automatically (destination exists).")
+            break
         src = file_info.path
         try:
             # Validate source file exists

@@ -286,6 +286,12 @@ story.append(para(
     "modification time match a cached entry are skipped without reading a "
     "byte (marked \"(cached)\" in the log), and the run picks up where it "
     "left off. Without --use-db, interrupted work is not persisted."))
+story.append(para(
+    "If the <b>database itself</b> becomes unreachable mid-run, a circuit "
+    "breaker trips after three consecutive failures: analysis phases "
+    "continue without persistence (so a dry run still completes), but "
+    "--execute is refused and an in-progress execution stops cleanly before "
+    "its next file move — file operations are never performed unlogged."))
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 5
@@ -612,6 +618,11 @@ rows = [
     ["Run was interrupted (Ctrl+C, crash, reboot)",
      "With --use-db, completed work is already saved. Re-run the same "
      "command; unchanged files show '(cached)' and are skipped instantly."],
+    ["Database dies in the middle of a run",
+     "A circuit breaker trips after 3 consecutive DB failures: one loud "
+     "error, then the run continues without persistence (dry runs finish "
+     "normally). --execute is refused, and an in-progress execution stops "
+     "cleanly before its next file move. Restore the DB and re-run."],
     ["Everything classifies as 'code' or 'application'",
      "The path contains a structure-preserving directory name (src, scripts, "
      "software, adobe, ...). This is by design: those trees are preserved "

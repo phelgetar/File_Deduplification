@@ -435,6 +435,18 @@ def main():
         launch_gui(plan)
 
     if args.execute:
+        # Fail fast: with --use-db, refuse to move files if the database was
+        # lost during this run — operations would be unlogged and unauditable.
+        if args.use_db:
+            from core.db import is_db_down
+            if is_db_down():
+                print("❌ The database connection was lost during this run "
+                      "(circuit breaker tripped). Refusing to execute file "
+                      "moves without operation logging.")
+                print("   Restore the database and re-run — completed hashes "
+                      "from before the outage are cached, so the re-run will "
+                      "be fast.")
+                sys.exit(1)
         confirm = input("⚠️ Are you sure you want to apply these changes? (y/N): ")
         if confirm.lower() == 'y':
             execute_plan(plan, write_metadata=args.write_metadata, use_db=args.use_db)
