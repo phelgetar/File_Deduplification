@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚡ Performance
+
+#### **Fixed O(n²) classification slowdown (missing index)**
+- 🐛 **FIX**: `classifications.file_id` had no index, so `save_classification()` full-table-scanned the classifications table for every file — throughput on a 7.5M-file run decayed from ~417k files/day to ~128k/day
+- ✨ **NEW**: `database/migrations/002_add_classifications_file_id_index.sql` (safe to apply while a run is in progress — MySQL 8 online DDL)
+- 🔧 `Classification.file_id` model column now declares `index=True` for fresh deployments
+
 ### 🛡️ Resilience
 
 #### **Database Circuit Breaker + Fail-Fast Execution**

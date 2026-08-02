@@ -154,7 +154,11 @@ class Classification(Base):
     __tablename__ = 'classifications'
 
     id = Column(BigInteger, primary_key=True)
-    file_id = Column(BigInteger)  # Removed ForeignKey constraint due to permission issues
+    # index=True is load-bearing: save_classification() looks up by file_id
+    # for EVERY file — without the index that is a full table scan per file,
+    # which made classification O(n^2) over the run (observed: 417k/day
+    # decaying to 128k/day at 2.4M rows before the index existed).
+    file_id = Column(BigInteger, index=True)  # Removed ForeignKey constraint due to permission issues
     category = Column(String(255))
     owner = Column(String(255))
     year = Column(Integer)
