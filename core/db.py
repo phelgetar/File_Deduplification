@@ -210,6 +210,25 @@ def cache_file_entry(path, size, mtime, hash_val, metadata_only=False):
         return file
 
 @_db_guard(default=None)
+def get_classification(path):
+    """Return (category, confidence) for an already-classified file, or None.
+
+    Used by classify_file() to resume interrupted runs: files that already
+    have a classification row are not re-classified (and, crucially, not
+    re-sent to the LLM). Use scripts/reclassify_files.py to force a redo
+    after classifier rule changes.
+    """
+    with Session() as session:
+        file = session.query(File).filter_by(path=str(path)).first()
+        if not file:
+            return None
+        c = session.query(Classification).filter_by(file_id=file.id).first()
+        if c and c.category:
+            return (c.category, c.confidence)
+        return None
+
+
+@_db_guard(default=None)
 def get_cached_hash(path, mtime):
     with Session() as session:
         file = session.query(File).filter_by(path=str(path)).first()

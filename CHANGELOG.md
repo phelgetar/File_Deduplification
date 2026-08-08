@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ♻️ Classification Resume + Email Rules
+- ✨ **NEW**: Classification resumes across runs — files that already have a classification row are skipped (no rule re-work and, critically, no repeat LLM calls). Force a redo with `scripts/reclassify_files.py`.
+- ✨ **NEW**: Email/message archive extensions (`.emlx`, `.olk14Message`, `.olk15Message`, `.olk15MsgSource`, `.ichat`) now classify by rule as "data" — previously each fell through to the LLM at ~0.4s per message (observed: ~2 days of GPU time on one 7.5M-file run's mail stores).
+
 ### ⚡ Performance
 
 #### **Fixed O(n²) classification slowdown (missing index)**

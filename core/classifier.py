@@ -13,10 +13,11 @@
 # Author: Tim Canady
 # Created: 2025-09-28
 #
-# Version: 1.8.0
-# Last Modified: 2026-07-20 by Tim Canady
+# Version: 1.9.0
+# Last Modified: 2026-08-08 by Tim Canady
 #
 # Revision History:
+# - 1.9.0 (2026-08-08): Resume support (skip files already classified in DB); email/message archive extensions (.emlx, .olk14/15*, .ichat) classified by rule instead of falling through to the LLM — Tim Canady
 # - 1.8.0 (2026-07-20): Added optional local-LLM (Ollama) fallback for files classified as "other" — Tim Canady
 # - 1.7.1 (2025-11-14): Added DICOM medical imaging file extensions (.dcm, .dicom) to scientific category — Tim Canady
 # - 1.7.0 (2025-11-14): Added special video subcategories (security_camera_video, wolf_video) with filename pattern detection — Tim Canady
@@ -67,6 +68,16 @@ def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None
     - system: System and configuration files
     - other: Unclassified files
     """
+    # Resume support: skip files already classified in a previous run
+    # (avoids re-doing rule work and, critically, repeat LLM calls).
+    if use_db:
+        from core.db import get_classification
+        existing = get_classification(file_info.path)
+        if existing is not None:
+            file_info.type = existing[0]
+            logging.debug(f"  ⏩ Already classified ({existing[0]}): {file_info.path.name}")
+            return file_info
+
     mime_type, _ = mimetypes.guess_type(str(file_info.path))
     file_extension = file_info.path.suffix.lower()
     file_name = file_info.path.name.lower()
@@ -260,6 +271,13 @@ def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None
               file_extension.startswith(".t2") or
               file_extension.startswith(".h2")):
             category = "financial"
+
+        # Email and message archives (Apple Mail, Outlook for Mac, iChat).
+        # Classified as "data" for consistency with the LLM's category for
+        # the ~1M such files it classified before this rule existed.
+        elif file_extension in [".emlx", ".olk14message", ".olk15message",
+                                ".olk15msgsource", ".ichat"]:
+            category = "data"
 
         # Backup files
         elif file_extension in [".bak", ".backup", ".old", ".orig", ".save", ".swp", ".tmp~"]:
