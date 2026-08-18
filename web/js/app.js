@@ -43,7 +43,9 @@ const num = (n) => (n ?? 0).toLocaleString();
 // ───────────────────────────── state ─────────────────────────────
 
 const state = { jobId: null, jobStatus: null, planTotal: 0, planOffset: 0,
-                dupeOffset: 0, stages: new Map() };
+                dupeOffset: 0, stages: new Map(),
+                treePrefix: null, treeAfter: null, treeLoaded: false,
+                treeFileCount: 0 };
 
 // ───────────────────────────── nav ─────────────────────────────
 
@@ -54,6 +56,7 @@ document.querySelectorAll("nav button").forEach((btn) => {
     btn.classList.add("on");
     $("view-" + btn.dataset.view).classList.add("on");
     if (btn.dataset.view === "dupes") loadDuplicates();
+    if (btn.dataset.view === "tree" && !state.treeLoaded) loadTree();
     if (btn.dataset.view === "plan") loadPlan();
     if (btn.dataset.view === "jobs") loadJobs();
   };
@@ -254,31 +257,241 @@ $("cancel").onclick = async () => {
 async function loadDuplicates(offset = 0) {
   if (!state.jobId) return;
   const tbody = $("dupetable").querySelector("tbody");
+  const showResolved = $("dupeshowresolved").checked ? 1 : 0;
   try {
-    const page = await api(`/api/jobs/${state.jobId}/duplicates?offset=${offset}&limit=100`);
+    const page = await api(
+      `/api/jobs/${state.jobId}/duplicates?offset=${offset}&limit=100` +
+      `&show_resolved=${showResolved}`);
     state.dupeOffset = offset;
     $("dupesum").innerHTML =
-      `<div class="stat"><b>${num(page.total)}</b><span>groups</span></div>` +
-      `<div class="stat"><b>${bytes(page.total_reclaimable)}</b><span>reclaimable on this page</span></div>`;
+      `<div class="stat"><b>${num(page.total)}</b><span>groups to review</span></div>` +
+      `<div class="stat"><b>${bytes(page.total_reclaimable)}</b><span>reclaimable on this page</span></div>` +
+      (page.resolved_hidden
+        ? `<div class="stat"><b>${num(page.resolved_hidden)}</b><span>resolved (hidden)</span></div>` : "");
     if (!page.rows.length) {
-      tbody.innerHTML = `<tr><td colspan="4"><div class="empty">No duplicates found.</div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5"><div class="empty">` +
+        (page.resolved_hidden ? "All duplicate groups are resolved. 🎉"
+                              : "No duplicates found.") + `</div></td></tr>`;
       $("dupepager").innerHTML = "";
       return;
     }
-    tbody.innerHTML = page.rows.map((g) => `
-      <tr>
+    tbody.innerHTML = page.rows.map((g, i) => `
+      <tr data-hash="${esc(g.hash)}" data-row="${i}">
         <td>${g.count}</td>
         <td>${bytes(g.size)}</td>
         <td><b>${bytes(g.reclaimable)}</b></td>
-        <td class="path">${g.paths.map((p) =>
-          `<div${p.is_duplicate ? ' class="dim"' : ""}>${esc(p.path)}` +
-          `${p.is_duplicate ? "" : " <span class=\"tag\">keep</span>"}</div>`).join("")}</td>
+        <td class="path">${g.paths.map((p) => {
+          const kept = g.resolved ? (g.kept || []).includes(p.path) : !p.is_duplicate;
+          return `<label style="display:flex;gap:6px;align-items:baseline;margin:1px 0;cursor:pointer">` +
+            `<input type="checkbox" data-keep="${esc(p.path)}" ${kept ? "checked" : ""}>` +
+            `<span${kept ? "" : ' class="dim"'}>${esc(p.path)}</span></label>`;
+        }).join("")}</td>
+        <td style="white-space:nowrap">${g.resolved
+          ? `<span class="tag" style="color:var(--ok)">resolved</span>
+             <button class="ghost" data-unresolve="${esc(g.hash)}">Unresolve</button>`
+          : `<button class="act" data-resolve="${esc(g.hash)}">Keep&nbsp;selected</button>`}</td>
       </tr>`).join("");
+
+    tbody.querySelectorAll("button[data-resolve]").forEach((b) => {
+      b.onclick = async () => {
+        const tr = b.closest("tr");
+        const keep = [...tr.querySelectorAll("input[data-keep]:checked")]
+          .map((c) => c.dataset.keep);
+        if (!keep.length) { alert("Tick at least one copy to keep."); return; }
+        b.disabled = true;
+        try {
+          await post("/api/db/duplicates/resolutions",
+                     { hash: b.dataset.resolve, keep });
+          loadDuplicates(state.dupeOffset);
+        } catch (e) { alert("Could not save: " + e.message); b.disabled = false; }
+      };
+    });
+    tbody.querySelectorAll("button[data-unresolve]").forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          await api(`/api/db/duplicates/resolutions/${encodeURIComponent(b.dataset.unresolve)}`,
+                    { method: "DELETE" });
+          loadDuplicates(state.dupeOffset);
+        } catch (e) { alert("Could not unresolve: " + e.message); b.disabled = false; }
+      };
+    });
     pager("dupepager", page, loadDuplicates);
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="4"><div class="empty">${esc(e.message)}</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty">${esc(e.message)}</div></td></tr>`;
   }
 }
+
+$("dupeshowresolved").onchange = () => loadDuplicates(0);
+
+// ───────────────────────── folder picker ─────────────────────────
+
+const fsdlg = $("fsdlg");
+let fsTarget = null;      // input element the picker fills
+let fsCurrent = null;     // path currently listed
+
+async function fsShow(path) {
+  try {
+    const d = await api(`/api/fs/dirs?path=${encodeURIComponent(path)}`);
+    fsCurrent = d.path;
+    $("fspath").textContent = d.path + (d.truncated ? "  (first 500 shown)" : "");
+    $("fsup").disabled = !d.parent;
+    $("fslist").innerHTML = d.dirs.length
+      ? d.dirs.map((n) => `<button data-dir="${esc(n)}">📁 ${esc(n)}</button>`).join("")
+      : `<div class="empty">No subfolders.</div>`;
+    $("fslist").querySelectorAll("button[data-dir]").forEach((b) => {
+      b.onclick = () => fsShow(
+        (fsCurrent === "/" ? "" : fsCurrent) + "/" + b.dataset.dir);
+    });
+  } catch (e) {
+    if (!fsCurrent && path !== "/") return fsShow("/");   // bad start path
+    $("fslist").innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+document.querySelectorAll("button.browse").forEach((b) => {
+  b.onclick = () => {
+    fsTarget = $(b.dataset.pick);
+    fsdlg.showModal();
+    // Start where the input already points, else somewhere sensible.
+    fsShow(fsTarget.value.trim() || "/Volumes");
+  };
+});
+$("fsup").onclick = () => {
+  const parent = fsCurrent.split("/").slice(0, -1).join("/") || "/";
+  fsShow(parent);
+};
+$("fscancel").onclick = () => fsdlg.close();
+$("fsuse").onclick = () => {
+  if (fsTarget && fsCurrent) {
+    fsTarget.value = fsCurrent;
+    if (fsTarget.id === "treeprefix") loadTree(fsCurrent);
+  }
+  fsdlg.close();
+};
+
+// ──────────────────── duplicate trees (database) ────────────────────
+
+function dupPctSpan(pct) {
+  const color = pct >= 80 ? "var(--danger)" : pct >= 40 ? "var(--warn)" : "inherit";
+  return `<span style="color:${color};font-weight:600">${pct}%</span>`;
+}
+
+function renderCrumb(prefix) {
+  const parts = prefix.split("/").filter(Boolean);
+  let acc = "";
+  const links = parts.map((p) => {
+    acc += "/" + p;
+    const target = acc;
+    return `<a href="#" data-crumb="${esc(target)}">${esc(p)}</a>`;
+  });
+  $("treecrumb").innerHTML = "/ " + links.join(" / ");
+  $("treecrumb").querySelectorAll("a[data-crumb]").forEach((a) => {
+    a.onclick = (e) => { e.preventDefault(); loadTree(a.dataset.crumb); };
+  });
+}
+
+async function loadTree(prefix, refresh = false) {
+  prefix = prefix || $("treeprefix").value.trim() || "/Volumes/home";
+  state.treeLoaded = true;
+  state.treePrefix = prefix;
+  $("treeprefix").value = prefix;
+  renderCrumb(prefix);
+  const tbody = $("treetable").querySelector("tbody");
+  tbody.innerHTML = `<tr><td colspan="7"><div class="empty">Aggregating… a broad
+    directory can take a minute or two on the first load.</div></td></tr>`;
+  $("treestatus").textContent = "computing…";
+
+  try {
+    api("/api/db/duplicates/status").then((status) => {
+      $("treesum").innerHTML =
+        `<div class="stat"><b>${num(status.files)}</b><span>files in database</span></div>` +
+        `<div class="stat"><b>${num(status.duplicates)}</b><span>duplicates</span></div>` +
+        `<div class="stat"><b>${bytes(status.duplicate_bytes)}</b><span>duplicate bytes (hashed only)</span></div>`;
+    }).catch(() => {});
+
+    // The server never blocks: poll until the aggregation is ready.
+    let tree = await api(
+      `/api/db/duplicates/tree?prefix=${encodeURIComponent(prefix)}` +
+      (refresh ? "&refresh=1" : ""));
+    while (tree.status === "computing") {
+      if (state.treePrefix !== prefix) return;   // user navigated away
+      $("treestatus").textContent =
+        `computing… ${Math.round(tree.elapsed_seconds || 0)}s (the database is ` +
+        `shared with any running scan)`;
+      await new Promise((r) => setTimeout(r, 3000));
+      tree = await api(`/api/db/duplicates/tree?prefix=${encodeURIComponent(prefix)}`);
+    }
+    if (state.treePrefix !== prefix) return;
+    $("treestatus").textContent =
+      `computed in ${tree.elapsed_seconds}s · cached 15 min` +
+      (tree.truncated ? " · list truncated" : "");
+
+    if (!tree.children.length) {
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty">Nothing under this prefix.</div></td></tr>`;
+    } else {
+      tbody.innerHTML = tree.children.map((c) => `
+        <tr>
+          <td class="path">${c.is_dir
+            ? `<a href="#" data-dir="${esc(c.name)}">${esc(c.name)}/</a>`
+            : esc(c.name)}</td>
+          <td>${num(c.files)}</td>
+          <td>${num(c.duplicates)}</td>
+          <td>${dupPctSpan(c.dup_pct)}</td>
+          <td>${bytes(c.duplicate_bytes)}</td>
+          <td>${c.unhashed ? `<span style="color:var(--warn)">${num(c.unhashed)}</span>` : "0"}</td>
+          <td class="dim">${c.originals_in.map((t) =>
+            `${esc(t.tree)} ${t.pct}%`).join(" · ") || "—"}</td>
+        </tr>`).join("");
+      tbody.querySelectorAll("a[data-dir]").forEach((a) => {
+        a.onclick = (e) => {
+          e.preventDefault();
+          loadTree(state.treePrefix + "/" + a.dataset.dir);
+        };
+      });
+    }
+    loadTreeFiles(true);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty">${esc(e.message)}</div></td></tr>`;
+    $("treestatus").textContent = "";
+  }
+}
+
+async function loadTreeFiles(reset) {
+  const tbody = $("treefiles").querySelector("tbody");
+  if (reset) { state.treeAfter = null; state.treeFileCount = 0; tbody.innerHTML = ""; }
+  const dupsOnly = $("treedupsonly").checked ? 1 : 0;
+  try {
+    const page = await api(
+      `/api/db/duplicates/files?prefix=${encodeURIComponent(state.treePrefix)}` +
+      `&dups_only=${dupsOnly}&limit=100` +
+      (state.treeAfter ? `&after=${encodeURIComponent(state.treeAfter)}` : ""));
+    if (!page.rows.length && reset) {
+      tbody.innerHTML = `<tr><td colspan="3"><div class="empty">No matching files.</div></td></tr>`;
+    } else {
+      tbody.insertAdjacentHTML("beforeend", page.rows.map((r) => `
+        <tr>
+          <td class="path">${esc(r.path)}${r.unhashed
+            ? ' <span class="tag" style="color:var(--warn)">unhashed</span>' : ""}</td>
+          <td>${bytes(r.size)}</td>
+          <td class="path dim">${r.duplicate_of ? esc(r.duplicate_of) : "—"}</td>
+        </tr>`).join(""));
+    }
+    state.treeFileCount += page.rows.length;
+    state.treeAfter = page.next_after;
+    $("treemore").style.display = page.next_after ? "" : "none";
+    $("treefilecount").textContent =
+      `${num(state.treeFileCount)} shown${page.next_after ? " — more available" : ""}`;
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="3"><div class="empty">${esc(e.message)}</div></td></tr>`;
+  }
+}
+
+$("treego").onclick = () => loadTree($("treeprefix").value.trim());
+$("treeprefix").onkeydown = (e) => { if (e.key === "Enter") loadTree(e.target.value.trim()); };
+$("treerefresh").onclick = () => loadTree(state.treePrefix, true);
+$("treedupsonly").onchange = () => loadTreeFiles(true);
+$("treemore").onclick = () => loadTreeFiles(false);
 
 // ────────────────────────── plan review ──────────────────────────
 

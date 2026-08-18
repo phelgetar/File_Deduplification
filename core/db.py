@@ -179,6 +179,20 @@ class Operation(Base):
     executed_at = Column(DateTime)
 
 
+class DuplicateResolution(Base):
+    """A user's decision about one duplicate group, keyed by content hash.
+
+    kept_paths is a JSON array — more than one copy may be kept. Files in
+    the group but not in kept_paths are treated as duplicates without
+    asking again; resolved groups are hidden from review screens.
+    """
+    __tablename__ = 'duplicate_resolutions'
+
+    hash = Column(String(128), primary_key=True)
+    kept_paths = Column(Text, nullable=False)
+    resolved_at = Column(DateTime, default=datetime.utcnow)
+
+
 class FileTag(Base):
     __tablename__ = 'file_tags'
 
@@ -209,6 +223,47 @@ def cache_file_entry(path, size, mtime, hash_val, metadata_only=False):
         session.add(file)
         session.commit()
         return file
+
+@_db_guard(default={})
+def get_duplicate_resolutions():
+    """All resolved duplicate groups: {hash: [kept_path, ...]}."""
+    import json as _json
+    with Session() as session:
+        out = {}
+        for r in session.query(DuplicateResolution).all():
+            try:
+                out[r.hash] = _json.loads(r.kept_paths)
+            except (TypeError, ValueError):
+                continue
+        return out
+
+
+@_db_guard(default=False)
+def save_duplicate_resolution(hash_val, kept_paths):
+    """Record which copies of a duplicate group to keep."""
+    import json as _json
+    with Session() as session:
+        row = session.query(DuplicateResolution).filter_by(hash=hash_val).first()
+        if row is None:
+            row = DuplicateResolution(hash=hash_val)
+        row.kept_paths = _json.dumps(list(kept_paths))
+        row.resolved_at = datetime.utcnow()
+        session.add(row)
+        session.commit()
+        return True
+
+
+@_db_guard(default=False)
+def delete_duplicate_resolution(hash_val):
+    """Forget a resolution so the group shows up for review again."""
+    with Session() as session:
+        row = session.query(DuplicateResolution).filter_by(hash=hash_val).first()
+        if row:
+            session.delete(row)
+            session.commit()
+            return True
+        return False
+
 
 @_db_guard(default=None)
 def get_classification(path):

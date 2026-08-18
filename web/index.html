@@ -108,6 +108,18 @@ dialog::backdrop { background: rgba(0,0,0,0.55); }
 dialog p { font-size: 13px; }
 .pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 12px; }
 .err { color: var(--danger); font-size: 13px; }
+.pathrow { display: flex; gap: 6px; }
+.pathrow input { flex: 1; }
+button.browse { background: var(--panel-2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px; padding: 0 10px; cursor: pointer; font-size: 14px; }
+#fslist { max-height: 300px; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: 6px; margin: 10px 0; }
+#fslist button { display: block; width: 100%; text-align: left; background: none;
+  border: none; border-bottom: 1px solid var(--border); color: var(--text);
+  padding: 7px 12px; cursor: pointer; font: 12px var(--mono); }
+#fslist button:last-child { border-bottom: none; }
+#fslist button:hover { background: var(--panel-2); }
+#fspath { font: 12px var(--mono); color: var(--muted); word-break: break-all; }
 </style>
 </head>
 <body>
@@ -117,6 +129,7 @@ dialog p { font-size: 13px; }
   <nav>
     <button data-view="run" class="on">Run</button>
     <button data-view="dupes">Duplicates</button>
+    <button data-view="tree">Dup Trees</button>
     <button data-view="plan">Plan</button>
     <button data-view="jobs">Jobs</button>
   </nav>
@@ -130,11 +143,17 @@ dialog p { font-size: 13px; }
       <div class="grid">
         <div>
           <label for="src">Source directory</label>
-          <input type="text" id="src" placeholder="/Users/you/Documents" spellcheck="false">
+          <div class="pathrow">
+            <input type="text" id="src" placeholder="/Users/you/Documents" spellcheck="false">
+            <button class="browse" data-pick="src" title="Browse…">📁</button>
+          </div>
         </div>
         <div>
           <label for="dst">Destination (organized copy)</label>
-          <input type="text" id="dst" placeholder="/Users/you/Organized" spellcheck="false">
+          <div class="pathrow">
+            <input type="text" id="dst" placeholder="/Users/you/Organized" spellcheck="false">
+            <button class="browse" data-pick="dst" title="Browse…">📁</button>
+          </div>
         </div>
         <div>
           <label for="ftypes">File types (blank = all)</label>
@@ -191,12 +210,61 @@ dialog p { font-size: 13px; }
   <section class="view" id="view-dupes">
     <div class="card">
       <h2>Duplicate groups</h2>
+      <div class="row" style="margin-bottom:10px">
+        <span class="dim">Tick the copies to keep (one or more), then save —
+          the group is settled and stops appearing here and in future runs.</span>
+        <span style="flex:1"></span>
+        <label style="margin:0"><input type="checkbox" id="dupeshowresolved">
+          Show resolved</label>
+      </div>
       <div id="dupesum" class="stats" style="margin-bottom:14px"></div>
       <div class="scroll"><table id="dupetable">
-        <thead><tr><th>Copies</th><th>Each</th><th>Reclaimable</th><th>Paths</th></tr></thead>
-        <tbody><tr><td colspan="4"><div class="empty">Run a scan first.</div></td></tr></tbody>
+        <thead><tr><th>Copies</th><th>Each</th><th>Reclaimable</th><th>Paths — tick to keep</th><th></th></tr></thead>
+        <tbody><tr><td colspan="5"><div class="empty">Run a scan first.</div></td></tr></tbody>
       </table></div>
       <div class="pager" id="dupepager"></div>
+    </div>
+  </section>
+
+  <!-- ────────────────────── Dup Trees (database) ────────────────────── -->
+  <section class="view" id="view-tree">
+    <div class="card">
+      <h2>Duplicate trees — from the database</h2>
+      <div class="row" style="margin-bottom:10px">
+        <div class="pathrow" style="max-width:460px;flex:1">
+          <input type="text" id="treeprefix" placeholder="/Volumes/home" spellcheck="false">
+          <button class="browse" data-pick="treeprefix" title="Browse…">📁</button>
+        </div>
+        <button class="ghost" id="treego">Load</button>
+        <button class="ghost" id="treerefresh" title="Bypass the cache and recompute">Refresh</button>
+        <span class="dim" id="treestatus"></span>
+      </div>
+      <div id="treecrumb" class="path" style="margin-bottom:10px"></div>
+      <div id="treesum" class="stats" style="margin-bottom:12px"></div>
+      <div class="scroll"><table id="treetable">
+        <thead><tr><th>Directory</th><th>Files</th><th>Duplicates</th><th>Dup %</th>
+          <th>Dup size</th><th>Unhashed</th><th>Originals live in</th></tr></thead>
+        <tbody><tr><td colspan="7"><div class="empty">Loading…</div></td></tr></tbody>
+      </table></div>
+      <p class="dim" style="font-size:12px">
+        First load of a broad directory scans millions of rows and can take a
+        minute or two; results are then cached for 15 minutes. “Unhashed” files
+        were over the size threshold — they are invisible to duplicate
+        detection, so check them before quarantining a tree.
+      </p>
+    </div>
+    <div class="card">
+      <h2>Duplicate files here</h2>
+      <div class="row" style="margin-bottom:10px">
+        <label style="margin:0"><input type="checkbox" id="treedupsonly" checked>
+          Duplicates only</label>
+        <span class="dim" id="treefilecount"></span>
+      </div>
+      <div class="scroll"><table id="treefiles">
+        <thead><tr><th>File</th><th>Size</th><th>Identical to</th></tr></thead>
+        <tbody><tr><td colspan="3"><div class="empty">Pick a directory above.</div></td></tr></tbody>
+      </table></div>
+      <div class="pager"><button class="ghost" id="treemore" style="display:none">Load more</button></div>
     </div>
   </section>
 
@@ -240,6 +308,18 @@ dialog p { font-size: 13px; }
     </div>
   </section>
 </main>
+
+<dialog id="fsdlg">
+  <h2 style="margin-top:0;font-size:15px">Choose a folder</h2>
+  <div id="fspath"></div>
+  <div id="fslist"></div>
+  <div class="row" style="justify-content:space-between">
+    <button class="ghost" id="fsup">↑ Up</button>
+    <span style="flex:1"></span>
+    <button class="ghost" id="fscancel">Cancel</button>
+    <button class="act" id="fsuse">Use this folder</button>
+  </div>
+</dialog>
 
 <dialog id="confirm">
   <h2 style="margin-top:0;font-size:15px">Copy files into the destination?</h2>

@@ -42,11 +42,45 @@ def detect_duplicates(files: List[FileInfo], use_db: bool = False) -> List[FileI
 
         hash_groups[file_info.hash].append(file_info)
 
+    # User decisions from previous reviews: {hash: [paths to keep]}.
+    # A resolved group is settled without asking again — chosen copies
+    # stay originals, everything else in the group is a duplicate.
+    resolutions = {}
+    if use_db:
+        try:
+            from core.db import get_duplicate_resolutions
+            resolutions = get_duplicate_resolutions() or {}
+        except Exception as e:
+            logging.debug(f"Duplicate resolutions unavailable: {e}")
+
     # Mark duplicates
     duplicate_count = 0
     unique_count = 0
+    resolved_groups = 0
 
     for hash_value, file_list in hash_groups.items():
+        kept_paths = resolutions.get(hash_value)
+        if kept_paths and len(file_list) > 1:
+            kept_set = set(kept_paths)
+            keepers = [f for f in file_list if str(f.path) in kept_set]
+            if keepers:
+                resolved_groups += 1
+                original = keepers[0]
+                for f in file_list:
+                    if str(f.path) not in kept_set:
+                        f.is_duplicate = True
+                        f.original_path = original.path
+                        duplicate_count += 1
+                        if use_db:
+                            try:
+                                from core.db import mark_duplicate
+                                mark_duplicate(str(f.path), str(original.path))
+                            except Exception:
+                                pass
+                unique_count += len(keepers)
+                continue
+            # None of the kept copies are in this scan — fall through and
+            # treat the group normally rather than silently discard files.
         if len(file_list) > 1:
             # Multiple files with same hash = duplicates
             # Keep first file as original, mark others as duplicates
@@ -80,6 +114,8 @@ def detect_duplicates(files: List[FileInfo], use_db: bool = False) -> List[FileI
     logging.info(f"   Unique files: {unique_count}")
     logging.info(f"   Duplicate files: {duplicate_count}")
     logging.info(f"   Total files: {len(files)}")
+    if resolved_groups:
+        logging.info(f"   ✅ {resolved_groups} groups auto-settled from saved review decisions")
 
     return files
 

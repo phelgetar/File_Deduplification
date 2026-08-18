@@ -40,7 +40,8 @@ tested against.
 | Screen | What it is for |
 |---|---|
 | **Run** | Choose a source and destination, pick options, and watch each stage report throughput and ETA as it goes. Cancel any time; completed work is kept. |
-| **Duplicates** | Groups by content hash, largest reclaimable space first, with the copy that would be kept marked. |
+| **Duplicates** | Groups by content hash, largest reclaimable space first. Tick the copies to keep (one or more) and save — the group is settled, disappears from review, and future runs apply the decision automatically. |
+| **Dup Trees** | The whole database's duplicates as a navigable directory tree: drill into any folder, see duplicate ratios, sizes, and which other trees hold the originals. Aggregations compute in the background and cache for 15 minutes. |
 | **Plan** | Every proposed move, paginated and filterable by path or category. This is the review step — nothing has been written yet. |
 | **Jobs** | Every run this session. Reopen one to review its plan or execute it later. |
 

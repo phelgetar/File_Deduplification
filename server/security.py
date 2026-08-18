@@ -96,6 +96,54 @@ def safe_output_dir(raw: str) -> Path:
     return path.resolve()
 
 
+def list_subdirectories(raw: str) -> dict:
+    """Directory listing for the folder picker — directories only.
+
+    Browsing is read-only and shallow (one level per call), but still
+    refuses the same system roots as scanning, hides dot-directories,
+    and caps the listing so a huge directory cannot flood the UI.
+    """
+    path = Path(raw or "/").expanduser()
+    try:
+        path = path.resolve(strict=True)
+    except (OSError, RuntimeError) as e:
+        raise PathRejected(f"Cannot resolve {raw!r}: {e}") from e
+    if not path.is_dir():
+        raise PathRejected(f"Not a directory: {path}")
+    if not os.access(path, os.R_OK):
+        raise PathRejected(f"Not readable: {path}")
+    for forbidden in FORBIDDEN_ROOTS:
+        if path == forbidden or forbidden in path.parents:
+            raise PathRejected(f"Refusing to browse a system directory: {path}")
+
+    dirs, truncated = [], False
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                try:
+                    if not entry.is_dir(follow_symlinks=False):
+                        continue
+                except OSError:
+                    continue
+                if entry.name.startswith("."):
+                    continue
+                if any(Path(entry.path) == f for f in FORBIDDEN_ROOTS):
+                    continue
+                dirs.append(entry.name)
+                if len(dirs) >= 500:
+                    truncated = True
+                    break
+    except OSError as e:
+        raise PathRejected(f"Cannot list {path}: {e}") from e
+
+    return {
+        "path": str(path),
+        "parent": str(path.parent) if path != Path("/") else None,
+        "dirs": sorted(dirs, key=str.lower),
+        "truncated": truncated,
+    }
+
+
 def allowed_file(job_dir: Path, candidate: str) -> Optional[Path]:
     """Return the path only if it appears in this job's plan.
 

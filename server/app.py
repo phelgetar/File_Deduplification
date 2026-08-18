@@ -48,6 +48,7 @@ from pydantic import BaseModel
 
 from core import parallel
 from server import security
+from server.dupes import router as dupes_router
 from server.jobs import TERMINAL, registry
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ logger = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 app = FastAPI(title="File Workbench")
+app.include_router(dupes_router)
 
 
 # ------------------------------ models ------------------------------
@@ -139,6 +141,15 @@ def api_system():
         ],
         "ollama_parallel": parallel.ollama_parallel(),
     }
+
+
+@app.get("/api/fs/dirs")
+def api_fs_dirs(path: str = "/"):
+    """Subdirectories of a path, for the folder picker. Read-only."""
+    try:
+        return security.list_subdirectories(path)
+    except security.PathRejected as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/api/file-types")
@@ -273,11 +284,41 @@ def api_plan(job_id: str, offset: int = 0, limit: int = 200,
 
 
 @app.get("/api/jobs/{job_id}/duplicates")
-def api_duplicates(job_id: str, offset: int = 0, limit: int = 100):
+def api_duplicates(job_id: str, offset: int = 0, limit: int = 100,
+                   show_resolved: bool = False):
+    """Duplicate groups for review. Groups the user has already resolved
+    (kept copies chosen) are hidden unless show_resolved is set."""
     job = _job_or_404(job_id)
-    page = _read_jsonl(job.dir / "duplicates.jsonl", offset, limit)
-    page["total_reclaimable"] = sum(r.get("reclaimable", 0) for r in page["rows"])
-    return page
+
+    resolutions = {}
+    try:
+        from core.db import get_duplicate_resolutions
+        resolutions = get_duplicate_resolutions() or {}
+    except Exception:
+        pass
+
+    path = job.dir / "duplicates.jsonl"
+    rows, total, hidden = [], 0, 0
+    if path.exists():
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                resolved = row.get("hash") in resolutions
+                if resolved and not show_resolved:
+                    hidden += 1
+                    continue
+                if resolved:
+                    row["resolved"] = True
+                    row["kept"] = resolutions[row["hash"]]
+                if offset <= total < offset + limit:
+                    rows.append(row)
+                total += 1
+    return {"rows": rows, "total": total, "offset": offset, "limit": limit,
+            "resolved_hidden": hidden,
+            "total_reclaimable": sum(r.get("reclaimable", 0) for r in rows)}
 
 
 @app.post("/api/jobs/{job_id}/execute")
@@ -362,6 +403,10 @@ def _shutdown():
 def _first_free_port(start: int, tries: int = 20) -> int:
     for port in range(start, start + tries):
         with socket.socket() as s:
+            # Match uvicorn's own SO_REUSEADDR, or a just-stopped server's
+            # TIME_WAIT socket makes us skip a port uvicorn could bind —
+            # and the port silently drifts on every restart.
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind(("127.0.0.1", port))
                 return port
