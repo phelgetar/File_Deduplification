@@ -92,7 +92,15 @@ def safe_output_dir(raw: str) -> Path:
         raise PathRejected(f"Parent directory does not exist: {parent}")
     if not os.access(parent, os.W_OK):
         raise PathRejected(f"Parent directory is not writable: {parent}")
-    path.mkdir(parents=True, exist_ok=True)
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError) as e:
+        hint = ""
+        if str(path).startswith("/Volumes/"):
+            hint = (" This server process may lack macOS permission for "
+                    "network volumes — launch it from your own terminal "
+                    "(which has your access) rather than an IDE or sandbox.")
+        raise PathRejected(f"Cannot create destination {path}: {e}.{hint}") from e
     return path.resolve()
 
 
