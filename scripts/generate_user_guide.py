@@ -6,9 +6,9 @@
 # Purpose: Generate docs/USER_GUIDE.pdf
 #
 # Description:
-# Builds the end-user PDF guide covering every CLI switch, usage
-# recipes, project structure, version management, and the git
-# workflow. Re-run after CLI or workflow changes:
+# Builds the end-user PDF guide covering every CLI switch, the web
+# interface, usage recipes, project structure, version management, and
+# the git workflow. Re-run after CLI, UI, or workflow changes:
 #
 #   python scripts/generate_user_guide.py
 #
@@ -17,7 +17,7 @@
 # Author: Tim Canady
 # Created: 2026-07-20
 #
-# Version: 1.0.0
+# Version: 1.1.0
 ###################################################################
 
 from datetime import date
@@ -121,6 +121,7 @@ for num, item in enumerate([
     "Before You Run: Pitfalls and Red Alerts",
     "Installation and Setup",
     "Running the Application",
+    "The Web Interface (File Workbench)",
     "Execution Modes",
     "Command-Line Reference",
     "Common Recipes",
@@ -330,49 +331,154 @@ for i, (stage, desc) in enumerate([
              "collapsed into single units. On walks longer than 10 seconds a "
              "progress heartbeat logs files matched, directories visited, and "
              "the current location."),
-    ("Hash", "SHA256 each file on a thread pool (--workers, default 4), or "
+    ("Hash", "SHA256 each file on a thread pool sized for the machine "
+             "(override with --workers), or "
              "record metadata only above the --metadata-only-size threshold. "
              "With --use-db every hash commits immediately and files unchanged "
              "since a previous run are skipped via the cache."),
     ("Deduplicate", "group files by hash; mark duplicates and optionally "
                     "report or drop them."),
-    ("Classify", "rule-based category assignment, with optional local-LLM "
-                 "fallback for unclassifiable files (--llm-classify)."),
+    ("Classify", "rule-based category assignment across a pool of worker "
+                 "processes, then an optional local-LLM pass for whatever the "
+                 "rules left unresolved (--llm-classify), then an optional "
+                 "cost-capped cloud pass for the remainder "
+                 "(--cloud-classify)."),
     ("Tag / Analyze", "with --use-db: semantic path tags; optionally image "
                       "metadata (--analyze-images) and CLIP content tags "
                       "(--ai-tagging)."),
     ("Plan", "compute the target folder structure (year / type / owner "
              "grouping, structure-preserving categories)."),
     ("Preview / Execute", "print the plan (and optionally log, notify, or "
-                          "show a GUI); move files only with --execute after "
-                          "a y/N confirmation."),
+                          "show a GUI); copy files into the destination only "
+                          "with --execute after a y/N confirmation. Sources "
+                          "are never removed."),
 ], start=1):
     story.append(para(f"<b>{i}. {stage}</b> — {desc}"))
+story.append(Spacer(1, 8))
+
+story.append(para("4.2 How the Work Is Parallelised", h2))
+story.append(para(
+    "There is no single worker count, because each stage is limited by a "
+    "different resource: scanning and hashing wait on disk, the classification "
+    "and tagging stages are CPU-bound and would serialise on Python's GIL if "
+    "they used threads, the local-LLM stage is limited by the Ollama server, "
+    "and image content analysis shares one GPU. Each stage is sized "
+    "independently. To see the sizing for your machine:", body))
+story.append(code("python main.py --show-parallelism"))
+story.append(para(
+    "Two points are worth understanding before tuning anything. First, a "
+    "process pool is not free: worker startup and the cost of moving each item "
+    "across a process boundary are real, and on cheap per-file work a pool is "
+    "<i>slower</i> than staying serial. The application therefore measures a "
+    "short serial sample of each CPU stage and only builds a pool when the "
+    "measured cost justifies it. A stage reported as running serially is "
+    "usually doing the right thing.", body))
+story.append(para(
+    "Second, the local-LLM stage is bounded by Ollama, not by your core count. "
+    "Client concurrency is read from <b>OLLAMA_NUM_PARALLEL</b>; if that is "
+    "unset, Ollama serves only a few requests at a time and adding client "
+    "threads changes nothing. Raise it to use more of the machine:", body))
+story.append(code("export OLLAMA_NUM_PARALLEL=8"))
+story.append(para(
+    "Any stage can be overridden with <b>WORKBENCH_&lt;STAGE&gt;_WORKERS</b> — "
+    "for example WORKBENCH_HASH_WORKERS=32. Setting one to 1 forces that stage "
+    "serial, which is the quickest way to isolate a stage while debugging.", body))
+story.append(PageBreak())
+
+# ------------------------------------------------------------------ web
+story.append(para("5. The Web Interface (File Workbench)", h1))
+story.append(para(
+    "Everything the CLI does can be driven from a browser instead. The web "
+    "interface, <b>File Workbench</b>, runs the same pipeline code as the "
+    "command line — core/main.py and the server both call core/pipeline.py — "
+    "so the two cannot produce different results.", body))
+story.append(para("Start the server:", body))
+story.append(code("./.venv/bin/python -m server.app"))
+story.append(para(
+    "It prints the URL it chose (the first free port from 8000) and binds to "
+    "localhost only, so it is not reachable from other machines.", body))
+
+story.append(para("5.1 The Four Screens", h2))
+rows = [
+    ["Screen", "Purpose"],
+    ["Run",
+     "Choose source and destination, set options, and watch each stage report "
+     "live throughput and an estimated time remaining. A run can be cancelled "
+     "at any point; work already completed is kept."],
+    ["Duplicates",
+     "Duplicate groups by content hash, ordered by reclaimable space, with the "
+     "copy that would be kept marked."],
+    ["Plan",
+     "Every proposed operation, paginated and filterable by path or category. "
+     "This is the review step: nothing has been written to disk yet."],
+    ["Jobs",
+     "Every run from this session. Reopen one to review its plan or execute it "
+     "later."],
+]
+# Cells must be Paragraphs, not bare strings — ReportLab does not wrap plain
+# string cells, so long text runs off the page edge.
+_cell = ParagraphStyle("Cell", parent=body, fontSize=9, leading=11.5,
+                       spaceAfter=0)
+_hcell = ParagraphStyle("HCell", parent=_cell, textColor=colors.white,
+                        fontName="Helvetica-Bold")
+t = Table(
+    [[Paragraph(c, _hcell if i == 0 else _cell) for c in row]
+     for i, row in enumerate(rows)],
+    colWidths=[1.2 * inch, 5.4 * inch])
+t.setStyle(TableStyle([
+    ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7f7f5")]),
+    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ("TOPPADDING", (0, 0), (-1, -1), 5),
+    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+]))
+story.append(t)
+story.append(Spacer(1, 12))
+
+story.append(para("5.2 Execution Is a Copy, and Requires Confirmation", h2))
+story.append(para(
+    "The Execute step <b>copies</b> files into the planned destination. Your "
+    "source tree is left exactly as it was, so a run is undone by deleting the "
+    "destination directory. It still requires typing a confirmation phrase "
+    "before anything is written, existing destination files are skipped rather "
+    "than overwritten, and with the database enabled every operation is "
+    "logged. If the database becomes unreachable mid-run, execution is refused "
+    "rather than performed unrecorded.", body))
+
+story.append(para("5.3 Where Job Output Goes", h2))
+story.append(para(
+    "Each run writes its plan, duplicate groups, and result summary to "
+    "<b>.workbench/jobs/&lt;job-id&gt;/</b>. These are run artifacts rather "
+    "than source, and are excluded from version control. They persist across "
+    "restarts, so a plan can be reviewed and executed later.", body))
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 4
-story.append(para("5. Execution Modes", h1))
-story.append(para("5.1 Dry Run (default)", h2))
+story.append(para("6. Execution Modes", h1))
+story.append(para("6.1 Dry Run (default)", h2))
 story.append(para(
     "With no mode flags, the tool scans, hashes, classifies, and prints the "
     "proposed folder tree without touching a single file. Always start here."))
 story.append(code("python main.py /Volumes/home --base-dir /organized"))
-story.append(para("5.2 Logged Dry Run", h2))
+story.append(para("6.2 Logged Dry Run", h2))
 story.append(para(
     "Add <b>--dry-run-log</b> to write the plan to a timestamped "
     "<font face='Courier'>dry_run_preview_*.json</font> (or .txt with "
     "<b>--log-format txt</b>) for later review or diffing between runs."))
 story.append(code("python main.py /Volumes/home --base-dir /organized --dry-run-log --log-format json"))
-story.append(para("5.3 GUI Preview", h2))
+story.append(para("6.3 GUI Preview", h2))
 story.append(para(
     "Add <b>--gui</b> to review the plan in a PySimpleGUI window instead of "
     "reading terminal output."))
-story.append(para("5.4 Execute", h2))
+story.append(para("6.4 Execute", h2))
 story.append(para(
     "Add <b>--execute</b> to apply the plan. The preview is still shown first, "
     "and you must confirm with <b>y</b> at the prompt before any file moves."))
 story.append(code("python main.py /Volumes/home --base-dir /organized --use-db --execute"))
-story.append(para("5.5 Interrupting and Resuming", h2))
+story.append(para("6.5 Interrupting and Resuming", h2))
 story.append(para(
     "With <b>--use-db</b>, long runs are safe to interrupt. Every completed "
     "hash is committed to MySQL immediately, so pressing Ctrl+C during the "
@@ -391,9 +497,9 @@ story.append(para(
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 5
-story.append(para("6. Command-Line Reference", h1))
+story.append(para("7. Command-Line Reference", h1))
 
-story.append(para("6.1 Required Arguments", h2))
+story.append(para("7.1 Required Arguments", h2))
 story.extend(flag("source", "(positional)",
     "Root directory to scan. Must exist and be readable.",
     "python main.py /Volumes/home --base-dir /organized"))
@@ -402,7 +508,7 @@ story.extend(flag("--base-dir", "PATH (required)",
     "and (with --execute) created. Created automatically if the parent "
     "directory exists and is writable."))
 
-story.append(para("6.2 Scan Control", h2))
+story.append(para("7.2 Scan Control", h2))
 story.extend(flag("--filter", "PATTERN [PATTERN ...]",
     "Only include top-level directories whose names match one of the given "
     "patterns. Useful for picking specific user folders out of a large volume.",
@@ -423,16 +529,24 @@ story.extend(flag("--ignore-errors", "",
     "Skip files that cannot be read (permissions, broken links) instead of "
     "aborting the run."))
 
-story.append(para("6.3 Hashing and Duplicates", h2))
+story.append(para("7.3 Hashing and Duplicates", h2))
 story.extend(flag("--metadata-only-size", "SIZE",
     "Files larger than SIZE are recorded metadata-only — no hashing, no "
     "duplicate detection. Accepts B, KB, MB, GB, TB. Use this to keep runs "
     "fast on volumes full of video files or disk images.",
     "python main.py /Videos --base-dir /organized --metadata-only-size 1GB"))
-story.extend(flag("--workers", "N (default: 4)",
-    "Number of parallel hashing threads. Hashing is I/O-bound, so multiple "
-    "threads significantly speed up network volumes; try 8 for a fast NAS.",
-    "python main.py /Volumes/home --base-dir /organized --use-db --workers 8"))
+story.extend(flag("--workers", "N (default: sized for this machine)",
+    "Number of parallel hashing threads. The default is derived from the "
+    "machine rather than fixed at 4. This flag now affects hashing only: the "
+    "CPU-bound stages size themselves per stage (see --show-parallelism), so "
+    "there is no single number to tune.",
+    "python main.py /Volumes/home --base-dir /organized --use-db --workers 32"))
+story.extend(flag("--show-parallelism", "",
+    "Print how each stage will be executed on this machine — threads, "
+    "processes, or serial, and how many workers — then exit. Use this before "
+    "a long run to confirm the sizing, and to see which environment variable "
+    "overrides each stage.",
+    "python main.py --show-parallelism"))
 story.extend(flag("--batch-size", "N (default: 500)",
     "Files per hashing batch. Every completed file is committed to the "
     "database immediately (with --use-db), so an interrupted run (Ctrl+C) "
@@ -446,7 +560,7 @@ story.extend(flag("--duplicate-report", "FILE",
     "Write a report of all detected duplicate groups to FILE.",
     "python main.py /Volumes/home --base-dir /organized --duplicate-report dupes.txt"))
 
-story.append(para("6.4 Database and AI Features", h2))
+story.append(para("7.4 Database and AI Features", h2))
 story.extend(flag("--use-db", "",
     "Enable MySQL persistence: hash caching across runs, saved "
     "classifications with confidence scores, and the unified file_tags "
@@ -469,7 +583,25 @@ story.extend(flag("--ai-tagging", "(requires --use-db and requirements-ai.txt)",
     "first (or in the same invocation) so base metadata exists.",
     "python main.py /photos --base-dir /organized --use-db --analyze-images --ai-tagging"))
 
-story.append(para("6.5 Output, Notification, and Execution", h2))
+story.extend(flag("--cloud-classify", "",
+    "Escalate files that neither the rules nor the local LLM could place to "
+    "Claude. This is the only tier that costs money, so it runs last and only "
+    "on the leftovers. Requires ANTHROPIC_API_KEY (or an `ant auth login` "
+    "profile); without a credential the tier disables itself and the run "
+    "continues on the free tiers.",
+    "python main.py /docs --base-dir /organized --use-db --llm-classify --cloud-classify"))
+story.extend(flag("--cloud-cost-limit", "USD (default: 1.00)",
+    "Hard spend ceiling for --cloud-classify. The batch is priced before the "
+    "first request and skipped entirely if the estimate exceeds this figure; "
+    "during the run the ceiling is enforced against actual token usage, not "
+    "the estimate.",
+    "python main.py /docs --base-dir /organized --cloud-classify --cloud-cost-limit 5.00"))
+story.extend(flag("--cloud-model", "MODEL",
+    "Model used by --cloud-classify. Defaults to claude-opus-5; also honours "
+    "the CLOUD_MODEL environment variable.",
+    "python main.py /docs --base-dir /organized --cloud-classify --cloud-model claude-haiku-4-5"))
+
+story.append(para("7.5 Output, Notification, and Execution", h2))
 story.extend(flag("--dry-run-log", "",
     "Write the preview plan to a timestamped dry_run_preview_* file."))
 story.extend(flag("--log-format", "json | txt (default: json)",
@@ -487,7 +619,7 @@ story.extend(flag("--write-metadata", "",
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 6
-story.append(para("7. Common Recipes", h1))
+story.append(para("8. Common Recipes", h1))
 story.append(para("<b>First look at a messy volume</b> — cheap, safe, fast:"))
 story.append(code("python main.py /Volumes/home --base-dir /tmp/preview --max-files 500"))
 story.append(para("<b>Full-featured dry run on a NAS</b> — database caching, LLM "
@@ -517,7 +649,7 @@ python main.py /Volumes/home --base-dir /organized \\
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 7
-story.append(para("8. Project Structure", h1))
+story.append(para("9. Project Structure", h1))
 story.append(code("""
 File_Deduplification/
 +-- main.py                  # CLI entry point (delegates to core/main.py)
@@ -525,7 +657,8 @@ File_Deduplification/
 +-- requirements.txt         # Core dependencies
 +-- requirements-ai.txt      # Optional CLIP/torch stack
 +-- Makefile                 # bump / changelog / release automation
-+-- README.md
++-- README.md                # Deduplicator CLI + database reference
++-- WORKBENCH.md             # File Workbench: web UI + unified pipeline
 +-- CHANGELOG.md
 +-- config/                  # YAML config + folder mapping rules
 |   +-- file_type_groups.yaml
@@ -534,7 +667,9 @@ File_Deduplification/
 |   +-- image_ai_categories.yaml
 |   +-- semantic_paths.yaml
 +-- core/                    # Application library code
-|   +-- main.py              # CLI implementation and pipeline orchestration
+|   +-- main.py              # CLI: argument parsing and terminal output
+|   +-- pipeline.py          # The pipeline as a library (CLI + server)
+|   +-- parallel.py          # Per-stage execution policy
 |   +-- scanner.py           # Recursive scan + atomic package detection
 |   +-- hasher.py            # SHA256 hashing with DB cache
 |   +-- deduplicator.py      # Duplicate detection and filtering
@@ -550,6 +685,21 @@ File_Deduplification/
 |   +-- image_db.py          # Image metadata persistence
 |   +-- metadata_writer.py   # Metadata output during execution
 |   +-- db.py                # MySQL connection and persistence helpers
++-- classify/                # Content extraction + classification ladder
+|   +-- extract.py           # Any supported file -> plain text
+|   +-- vision.py            # Image -> caption + OCR + EXIF
+|   +-- engine.py            # Rules -> local LLM -> cloud escalation
+|   +-- cloud.py             # Claude tier, with a hard spend cap
++-- search/                  # RAG index + user-added metadata
+|   +-- rag_store.py         # Embeddings, vector store, hybrid search
+|   +-- metadata_store.py    # User-added people/tags/notes
++-- server/                  # FastAPI backend for the web UI
+|   +-- app.py               # Routes
+|   +-- jobs.py              # Jobs in child processes, progress, cancel
+|   +-- security.py          # Path guards and file allowlist
++-- web/                     # Single-page front end (no build step)
+|   +-- index.html
+|   +-- js/app.js
 +-- database/
 |   +-- schema/              # Table creation scripts (run first)
 |   +-- migrations/          # Incremental schema changes (run in order)
@@ -578,12 +728,12 @@ story.append(para(
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 8
-story.append(para("9. Version Management and Releases", h1))
+story.append(para("10. Version Management and Releases", h1))
 story.append(para(
     "The project version lives in <font face='Courier'>scripts/version.yaml</font> "
     "and is read by <font face='Courier'>scripts/read_version.py</font>. "
     "<font face='Courier'>setup.py</font> carries the same version for packaging."))
-story.append(para("9.1 Bumping the Version", h2))
+story.append(para("10.1 Bumping the Version", h2))
 story.append(code(f"""
 make bump                 # bump the patch version (currently {VERSION}),
                           #   commit, and push
@@ -594,14 +744,14 @@ git add scripts/version.yaml
 git commit -m "Bump patch version"
 git push origin main
 """))
-story.append(para("9.2 Updating the Changelog", h2))
+story.append(para("10.2 Updating the Changelog", h2))
 story.append(code("""
 make changelog            # regenerate from commit history:
                           #   scripts/gen_changelog.py > docs/CHANGELOG_LAST.md
                           #   scripts/gen_changelog.py >> CHANGELOG.md
                           #   then commits and pushes
 """))
-story.append(para("9.3 Cutting a Release", h2))
+story.append(para("10.3 Cutting a Release", h2))
 story.append(code("""
 make release              # 1. verifies no staged file exceeds 100MB
                           # 2. commits with the current version number
@@ -616,12 +766,12 @@ story.append(para(
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 9
-story.append(para("10. Git Workflow: Committing and Pushing", h1))
+story.append(para("11. Git Workflow: Committing and Pushing", h1))
 story.append(para(
     "The repository is hosted on <b>GitHub</b> at "
     "<font face='Courier'>github.com/phelgetar/File_Deduplification</font>, "
     "with <font face='Courier'>main</font> as the working branch."))
-story.append(para("10.1 Day-to-Day Commits", h2))
+story.append(para("11.1 Day-to-Day Commits", h2))
 story.append(code("""
 git status                          # review what changed
 git add <files>                     # stage specific files (or -A for all)
@@ -634,7 +784,7 @@ story.append(para(
     "<font face='Courier'>fix</font>, <font face='Courier'>docs</font>, "
     "<font face='Courier'>chore</font>, <font face='Courier'>refactor</font>), "
     "an optional scope in parentheses, and a concise imperative summary."))
-story.append(para("10.2 The Pre-Commit Size Guard", h2))
+story.append(para("11.2 The Pre-Commit Size Guard", h2))
 story.append(para(
     "A pre-commit hook (symlinked to "
     "<font face='Courier'>scripts/validate_large_files.sh</font>) blocks any "
@@ -642,7 +792,7 @@ story.append(para(
     "commit is rejected, remove the offending file from staging; generated "
     "artifacts belong in <font face='Courier'>output/</font>, which is "
     "gitignored."))
-story.append(para("10.3 What Never Gets Committed", h2))
+story.append(para("11.3 What Never Gets Committed", h2))
 for item in [
     "<font face='Courier'>.env</font> — contains database credentials",
     "<font face='Courier'>output/</font> — dry-run previews and reports",
@@ -658,8 +808,8 @@ story.append(para(
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 10
-story.append(para("11. Tests and Utility Scripts", h1))
-story.append(para("11.1 Script-Style Tests (run directly)", h2))
+story.append(para("12. Tests and Utility Scripts", h1))
+story.append(para("12.1 Script-Style Tests (run directly)", h2))
 story.append(code("""
 python tests/test_llm_classifier.py     # LLM fallback (skips if Ollama is down)
 python tests/test_atomic_packages.py    # atomic .app/.pkg detection
@@ -668,13 +818,13 @@ python tests/test_context_detection.py  # semantic context rules
 python tests/test_folder_mapping.py     # custom folder mapping rules
 python tests/test_image_metadata.py     # image metadata extraction
 """))
-story.append(para("11.2 Pytest-Style Tests", h2))
+story.append(para("12.2 Pytest-Style Tests", h2))
 story.append(code("""
 pip install pytest
 pytest tests/test_scanner.py tests/test_hasher.py \\
        tests/test_classifier.py tests/test_organizer.py tests/test_executor.py
 """))
-story.append(para("11.3 Utility Scripts", h2))
+story.append(para("12.3 Utility Scripts", h2))
 story.append(code("""
 python scripts/reclassify_files.py      # re-classify files already in the DB
                                         #   (after classifier rule changes)
@@ -685,9 +835,26 @@ python scripts/generate_user_guide.py   # regenerate this PDF
 story.append(PageBreak())
 
 # ------------------------------------------------------------------ 12
-story.append(para("12. Troubleshooting", h1))
+story.append(para("13. Troubleshooting", h1))
 rows = [
     ["Symptom", "Likely Cause and Fix"],
+    ["Web UI: 'Refusing to scan a system directory'",
+     "The source path is under a protected root (/System, /usr, /bin, ...). "
+     "Point the scan at a specific user directory instead."],
+    ["Web UI: a stage reports 'serial' instead of a worker pool",
+     "Expected on cheap per-file work. A pool is only built when a measured "
+     "sample shows the per-item cost justifies it; forcing one would be "
+     "slower. Override with WORKBENCH_<STAGE>_WORKERS if you disagree."],
+    ["Local-LLM stage is slow no matter how many cores are free",
+     "It is bounded by the Ollama server, not by core count. Set "
+     "OLLAMA_NUM_PARALLEL (e.g. 8) and restart Ollama."],
+    ["--cloud-classify appears to do nothing",
+     "The tier disables itself without ANTHROPIC_API_KEY (or an `ant auth "
+     "login` profile). It is also skipped outright when the pre-flight "
+     "estimate exceeds --cloud-cost-limit; raise the cap or narrow the run."],
+    ["Server will not start: port already in use",
+     "It selects the first free port from 8000 automatically. Pass --port to "
+     "start searching elsewhere."],
     ["Database initialization fails at startup",
      "Missing or wrong DB_* values in .env. Verify with: "
      "python tests/test_db_connection.py"],
