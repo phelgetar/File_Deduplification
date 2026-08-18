@@ -398,7 +398,7 @@ story.append(para(
     "It prints the URL it chose (the first free port from 8000) and binds to "
     "localhost only, so it is not reachable from other machines.", body))
 
-story.append(para("5.1 The Four Screens", h2))
+story.append(para("5.1 The Screens", h2))
 rows = [
     ["Screen", "Purpose"],
     ["Run",
@@ -406,8 +406,14 @@ rows = [
      "live throughput and an estimated time remaining. A run can be cancelled "
      "at any point; work already completed is kept."],
     ["Duplicates",
-     "Duplicate groups by content hash, ordered by reclaimable space, with the "
-     "copy that would be kept marked."],
+     "Duplicate groups by content hash, ordered by reclaimable space. Tick the "
+     "copies to keep — one or more — and save. The group is settled, leaves the "
+     "review list, and future runs apply the decision without asking again."],
+    ["Dup Trees",
+     "Every duplicate in the database as a navigable directory tree. Drill into "
+     "any folder for its duplicate ratio, size, and which other trees hold the "
+     "originals. Totals and each level are computed on a worker thread and "
+     "cached for 15 minutes, so the screen never blocks on a query."],
     ["Plan",
      "Every proposed operation, paginated and filterable by path or category. "
      "This is the review step: nothing has been written to disk yet."],
@@ -438,7 +444,16 @@ t.setStyle(TableStyle([
 story.append(t)
 story.append(Spacer(1, 12))
 
-story.append(para("5.2 Execution Is a Copy, and Requires Confirmation", h2))
+story.append(para("5.2 Duplicate Decisions Persist", h2))
+story.append(para(
+    "A decision made on the Duplicates screen is stored against the group's "
+    "content hash in the <b>duplicate_resolutions</b> table, not against a "
+    "particular run. Every later run consults it before marking anything: the "
+    "copies you chose stay originals and the rest of the group is marked "
+    "duplicate, with no second review. Deleting the row puts the group back "
+    "into review.", body))
+
+story.append(para("5.3 Execution Is a Copy, and Requires Confirmation", h2))
 story.append(para(
     "The Execute step <b>copies</b> files into the planned destination. Your "
     "source tree is left exactly as it was, so a run is undone by deleting the "
@@ -448,7 +463,7 @@ story.append(para(
     "logged. If the database becomes unreachable mid-run, execution is refused "
     "rather than performed unrecorded.", body))
 
-story.append(para("5.3 Where Job Output Goes", h2))
+story.append(para("5.4 Where Job Output Goes", h2))
 story.append(para(
     "Each run writes its plan, duplicate groups, and result summary to "
     "<b>.workbench/jobs/&lt;job-id&gt;/</b>. These are run artifacts rather "

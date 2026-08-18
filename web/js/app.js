@@ -403,12 +403,28 @@ async function loadTree(prefix, refresh = false) {
   $("treestatus").textContent = "computing…";
 
   try {
-    api("/api/db/duplicates/status").then((status) => {
-      $("treesum").innerHTML =
-        `<div class="stat"><b>${num(status.files)}</b><span>files in database</span></div>` +
-        `<div class="stat"><b>${num(status.duplicates)}</b><span>duplicates</span></div>` +
-        `<div class="stat"><b>${bytes(status.duplicate_bytes)}</b><span>duplicate bytes (hashed only)</span></div>`;
-    }).catch(() => {});
+    // Same contract as the tree: the totals are an aggregate over every
+    // row, so the server hands back {status:"computing"} and we poll.
+    // Swallowing errors here is deliberate — the banner is a nicety and
+    // must never hold up the tree below it.
+    (async () => {
+      try {
+        let st = await api("/api/db/duplicates/status");
+        while (st.status === "computing") {
+          $("treesum").innerHTML =
+            `<div class="stat"><b>…</b><span>totalling the database ` +
+            `(${Math.round(st.elapsed_seconds || 0)}s)</span></div>`;
+          await new Promise((r) => setTimeout(r, 3000));
+          st = await api("/api/db/duplicates/status");
+        }
+        $("treesum").innerHTML =
+          `<div class="stat"><b>${num(st.files)}</b><span>files in database</span></div>` +
+          `<div class="stat"><b>${num(st.duplicates)}</b><span>duplicates</span></div>` +
+          `<div class="stat"><b>${bytes(st.duplicate_bytes)}</b><span>duplicate bytes (hashed only)</span></div>`;
+      } catch {
+        $("treesum").innerHTML = "";
+      }
+    })();
 
     // The server never blocks: poll until the aggregation is ready.
     let tree = await api(

@@ -1,8 +1,15 @@
 created: 2025-09-28
-last_modified: '2026-07-20'
+last_modified: '2026-08-17'
 maintainer: Tim Canady
 project: File Deduplication
 revision_history:
+- date: '2026-08-17'
+  notes: 'File Workbench: doc-classifier and File_Classifier absorbed behind one
+    web front end; pipeline extracted to core/pipeline.py so the CLI and server
+    share it; stage-aware parallelism with adaptive pool selection; interactive
+    duplicate review whose decisions apply on future runs; dup-tree explorer;
+    rules/local/cloud classification ladder with a hard spend cap'
+  version: 0.11.0
 - date: '2026-07-20'
   notes: Local LLM classification fallback (Ollama), parallel resumable hashing, scan
     heartbeat, PDF user guide; unified version streams (was 0.4.11 in version.yaml
@@ -14,4 +21,4 @@ revision_history:
 - date: 2025-09-28
   notes: Initial project structure defined
   version: 0.1.1
-version: 0.10.0
+version: 0.11.0

@@ -9,6 +9,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.11.0] – 2026-08-17
+
+### 🚀 Major Features
+
+#### **File Workbench — one application over three**
+`doc-classifier` and `File_Classifier` are absorbed into this project. All three
+used to walk the same files with their own scanner, storage, and interface.
+- ✨ **NEW**: Web front end (`server/`, `web/`) — Run, Duplicates, Dup Trees, Plan, and Jobs screens. Start it with `./.venv/bin/python -m server.app`; it binds to localhost only and picks the first free port from 8000
+- ✨ **NEW**: `core/pipeline.py` — the pipeline as a callable library. `core/main.py` is now argument parsing and terminal output only, so the CLI and the browser drive identical code and cannot drift apart. Organization plans are byte-identical to v0.10.0
+- ✨ **NEW**: `classify/` — text extraction, image captioning/OCR, and the classification ladder, ported from `doc-classifier` and `File_Classifier`
+- ✨ **NEW**: `search/` — RAG index and user metadata, ported from `doc-classifier`
+- ✨ **NEW**: Jobs run in spawned child processes with progress over a queue, cooperative cancellation, and a reconnect-safe event stream. Plans are written to `.workbench/jobs/<id>/` rather than held in the API process, so a multi-million-row plan can be paged and executed later
+- 📘 **NEW**: `WORKBENCH.md` — the application's own guide
+
+#### **Interactive duplicate review**
+- ✨ **NEW**: Tick which copies of a duplicate group to keep (one or more) and save. The group is settled, leaves the review list, and **future runs apply the decision automatically** — `core/deduplicator.py` consults `duplicate_resolutions` before marking anything
+- ✨ **NEW**: `duplicate_resolutions` table (`hash`, `kept_paths`, `resolved_at`)
+
+#### **Dup Trees explorer**
+- ✨ **NEW**: The whole database's duplicates as a navigable directory tree — drill into any folder for duplicate ratios, sizes, and which other trees hold the originals
+- ✨ **NEW**: Aggregations run on a worker thread and cache for 15 minutes; the endpoint returns `{status: "computing"}` and the client polls, so the request never blocks
+- ✨ **NEW**: Folder picker (`/api/fs/dirs`) for choosing scan and destination directories in the UI
+
+### ⚡ Performance
+
+#### **Stage-aware parallelism**
+- ✨ **NEW**: `core/parallel.py` — one policy table sizing each stage to what actually limits it. Classification, tagging, and image metadata previously ran **one file at a time**; they now use worker processes sized to the machine's performance cores
+- ✨ **NEW**: A process pool is only built when it pays. A short serial sample measures the real per-item cost first — forcing a pool over trivial work is *slower* (measured: 8,000 small files, 0.12s serial vs 0.27s pooled), while genuinely expensive work sees ~8x. A stage reported as serial is doing the right thing
+- ✨ **NEW**: `--show-parallelism` prints the per-stage sizing; `WORKBENCH_<STAGE>_WORKERS` overrides any of it
+- 🔧 `--workers` now applies to hashing only, and its default is derived from the machine rather than fixed at 4
+- ✨ **NEW**: Bulk database helpers (`get_file_ids`, `get_classified_paths`, `save_classifications_bulk`, `save_file_tags_bulk`). The per-file pattern issued one query per file — and one more per tag — which dominated the wall clock at this inventory's scale once the CPU stages were parallel
+
+#### **Whole-database duplicate totals**
+- 🐛 **FIX**: The Dup Trees banner aggregated over every row in `files` synchronously, hanging the request for minutes on a large database. It now uses the same background-and-poll path as the tree itself
+- ✨ **NEW**: `database/migrations/003_add_files_duplicate_index.sql` — a covering `(is_duplicate, size)` index so that aggregate is an index-only scan instead of a walk of the clustered index. Safe to apply while a run is in progress (MySQL 8 online DDL)
+
+### 🤖 Classification Ladder
+- ✨ **NEW**: Three tiers, cheapest first, each seeing only what the tier below could not place: rules → local Ollama (`--llm-classify`) → Claude (`--cloud-classify`)
+- ✨ **NEW**: The cloud tier is bounded, not open-ended — `--cloud-cost-limit` (default $1.00) is checked against a pre-flight estimate *and* enforced against real token usage as the run proceeds. Without `ANTHROPIC_API_KEY` the tier disables itself and the run continues on the free tiers
+- ✨ **NEW**: `--cloud-model` (default `claude-opus-5`, also honours `CLOUD_MODEL`)
+
+### 🛡️ Safety
+- 🔧 Execution **copies**; sources are never removed, so a run is undone by deleting the destination. The UI requires a typed confirmation phrase, and existing destination files are skipped rather than overwritten
+- ✨ **NEW**: Deny-by-default path guards — system directories are refused as scan roots, and file preview is restricted to files present in that job's own plan
+- 🐛 **FIX**: `safe_output_dir()` let `PermissionError` escape from `mkdir`, so a denied destination surfaced as a 500 instead of a readable message
+
+### 📘 Documentation
+- ✨ **NEW**: User guide section 5 "The Web Interface (File Workbench)" and 4.2 "How the Work Is Parallelised" (17 → 21+ pages)
+- ✨ **NEW**: `WORKBENCH.md`; README lists the new packages in its structure tree
+
 ### ♻️ Classification Resume + Email Rules
 - ✨ **NEW**: Classification resumes across runs — files that already have a classification row are skipped (no rule re-work and, critically, no repeat LLM calls). Force a redo with `scripts/reclassify_files.py`.
 - ✨ **NEW**: Email/message archive extensions (`.emlx`, `.olk14Message`, `.olk15Message`, `.olk15MsgSource`, `.ichat`) now classify by rule as "data" — previously each fell through to the LLM at ~0.4s per message (observed: ~2 days of GPU time on one 7.5M-file run's mail stores).

@@ -53,6 +53,12 @@ MAX_CHILDREN = 300
 _tree_cache: dict = {}
 _cache_lock = threading.Lock()
 
+# The headline totals need an aggregate over every row in `files`. On a
+# multi-million-row table that takes minutes, so it gets exactly the same
+# treatment as the tree: computed on a worker thread, cached, and polled
+# by the client. Running it inline made the banner hang the request.
+_status_cache: dict = {}
+
 
 def _session():
     """A DB session, or a 503 that says why there isn't one."""
@@ -170,21 +176,64 @@ def _compute_in_thread(prefix: str):
                                    "ts": time.time()}
 
 
-@router.get("/status")
-def api_status():
-    """Reachability plus headline numbers for the screen's banner."""
+def _compute_status() -> dict:
+    """Totals across the whole table. Minutes on a large database."""
+    started = time.time()
     with _session() as s:
+        s.execute(text("SET SESSION max_execution_time = 3000000"))
         row = s.execute(text("""
             SELECT COUNT(*) n,
                    SUM(is_duplicate = 1) dups,
                    SUM(CASE WHEN is_duplicate = 1 THEN size ELSE 0 END) dup_bytes
             FROM files""")).one()
-        return {
-            "files": int(row.n or 0),
-            "duplicates": int(row.dups or 0),
-            "duplicate_bytes": int(row.dup_bytes or 0),
-            "default_prefix": DEFAULT_PREFIX,
-        }
+    return {
+        "files": int(row.n or 0),
+        "duplicates": int(row.dups or 0),
+        "duplicate_bytes": int(row.dup_bytes or 0),
+        "default_prefix": DEFAULT_PREFIX,
+        "elapsed_seconds": round(time.time() - started, 1),
+    }
+
+
+def _compute_status_in_thread():
+    try:
+        data = _compute_status()
+        with _cache_lock:
+            _status_cache.update({"status": "ready", "data": data,
+                                  "ts": time.time()})
+    except Exception as e:
+        logger.warning("status aggregation failed: %s", e)
+        with _cache_lock:
+            _status_cache.update({"status": "error", "error": str(e),
+                                  "ts": time.time()})
+
+
+@router.get("/status")
+def api_status(refresh: bool = False):
+    """Headline numbers for the screen's banner.
+
+    Never blocks. A cache miss starts the aggregation on a worker thread
+    and returns {status: "computing"}; the client polls until it flips to
+    ready, exactly as it does for the tree.
+    """
+    with _cache_lock:
+        entry = dict(_status_cache) if _status_cache else None
+        if entry:
+            fresh = time.time() - entry["ts"] < CACHE_TTL_SECONDS
+            if entry["status"] == "computing":
+                return {"status": "computing",
+                        "elapsed_seconds": round(time.time() - entry["started"], 1)}
+            if entry["status"] == "ready" and fresh and not refresh:
+                return {"status": "ready", **entry["data"]}
+            if entry["status"] == "error" and fresh and not refresh:
+                raise HTTPException(500, f"Aggregation failed: {entry['error']}")
+        _status_cache.clear()
+        _status_cache.update({"status": "computing", "started": time.time(),
+                              "ts": time.time()})
+
+    threading.Thread(target=_compute_status_in_thread, daemon=True,
+                     name="dup-status").start()
+    return {"status": "computing", "elapsed_seconds": 0}
 
 
 @router.get("/tree")
