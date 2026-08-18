@@ -13,10 +13,11 @@
 # Author: Tim Canady
 # Created: 2025-11-04
 #
-# Version: 0.6.0
-# Last Modified: 2026-07-20 by Tim Canady
+# Version: 0.7.0
+# Last Modified: 2026-08-17 by Tim Canady
 #
 # Revision History:
+# - 0.7.0 (2026-08-17): Bulk helpers (get_file_ids, get_classified_paths, save_classifications_bulk, save_file_tags_bulk) — the per-file helpers issued one query per file (and per tag), which dominated the wall clock once the CPU stages were parallelised — Tim Canady
 # - 0.6.0 (2026-07-20): Circuit breaker — after repeated consecutive DB failures mid-run, stop attempting DB writes (no per-file timeout stalls); bounded connect timeout — Tim Canady
 # - 0.5.0 (2025-11-12): Fixed schema, removed FK constraints, added classification save — Tim Canady
 # - 0.2.0 (2025-11-06): Added context manager support for sessions — Tim Canady
@@ -363,3 +364,174 @@ def get_file_tags(file_path, tag_source=None):
 
         tags = query.all()
         return [tag.tag for tag in tags]
+
+
+# --- Bulk helpers ---
+#
+# The single-file helpers above issue one SELECT per file (and
+# save_file_tags issues one more per tag). Across a large run that is
+# millions of round trips, and it dominates the wall clock once the
+# CPU stages are parallel. These batch equivalents do the same work a
+# chunk at a time so a run costs a few thousand queries instead.
+#
+# All of them take and return plain paths/strings so they can be called
+# from the parent process with results collected out of worker pools —
+# worker processes deliberately never touch the database.
+
+# Rows per statement. Large enough to amortise the round trip, small
+# enough to stay well under MySQL's max_allowed_packet and to keep the
+# IN() lists reasonable for the optimiser.
+BULK_CHUNK = 1000
+
+
+def _chunks(seq, size=BULK_CHUNK):
+    seq = list(seq)
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
+
+
+@_db_guard(default=None)
+def get_file_ids(paths):
+    """Map {path string -> files.id} for the given paths.
+
+    Returns only the paths that exist in the database. Callers should
+    treat a None result (circuit breaker open) as "nothing known".
+    """
+    found = {}
+    with Session() as session:
+        for chunk in _chunks(str(p) for p in paths):
+            rows = session.query(File.id, File.path).filter(File.path.in_(chunk)).all()
+            for file_id, path in rows:
+                found[path] = file_id
+    return found
+
+
+@_db_guard(default=None)
+def get_classified_paths(paths):
+    """The subset of `paths` that already carry a classification.
+
+    This is the resume check that classify_file() does one file at a
+    time. Doing it in bulk before the classify stage lets us skip work
+    entirely rather than pay a query per file to discover we can.
+    """
+    classified = set()
+    with Session() as session:
+        for chunk in _chunks(str(p) for p in paths):
+            rows = (session.query(File.path)
+                    .join(Classification, Classification.file_id == File.id)
+                    .filter(File.path.in_(chunk))
+                    .filter(Classification.category.isnot(None))
+                    .all())
+            classified.update(r[0] for r in rows)
+    return classified
+
+
+@_db_guard(default=0)
+def save_classifications_bulk(rows):
+    """Insert or update many classifications at once.
+
+    `rows` is an iterable of (path, category, owner, year, confidence).
+    Returns the number of rows written.
+    """
+    rows = [r for r in rows if r]
+    if not rows:
+        return 0
+
+    written = 0
+    with Session() as session:
+        for chunk in _chunks(rows):
+            by_path = {str(path): (category, owner, year, confidence)
+                       for path, category, owner, year, confidence in chunk}
+
+            id_rows = session.query(File.id, File.path).filter(
+                File.path.in_(list(by_path))).all()
+            path_to_id = {path: fid for fid, path in id_rows}
+            if not path_to_id:
+                continue
+
+            # One query tells us which of these already have a row, so
+            # the writes below split cleanly into inserts and updates.
+            existing = {
+                c.file_id: c for c in session.query(Classification).filter(
+                    Classification.file_id.in_(list(path_to_id.values()))).all()
+            }
+
+            new_rows = []
+            for path, (category, owner, year, confidence) in by_path.items():
+                file_id = path_to_id.get(path)
+                if file_id is None:
+                    continue
+                current = existing.get(file_id)
+                if current is None:
+                    new_rows.append({
+                        "file_id": file_id, "category": category, "owner": owner,
+                        "year": year, "confidence": confidence,
+                        "classified_at": datetime.utcnow(),
+                    })
+                else:
+                    current.category = category
+                    current.owner = owner
+                    current.year = year
+                    current.confidence = confidence
+                    current.classified_at = datetime.utcnow()
+                written += 1
+
+            if new_rows:
+                session.bulk_insert_mappings(Classification, new_rows)
+            session.commit()
+    return written
+
+
+@_db_guard(default=0)
+def save_file_tags_bulk(rows, tag_source='ai_tagger', confidence=1.0):
+    """Insert many (path, [tags]) pairs at once, skipping duplicates.
+
+    Returns the number of tag rows inserted. Existing (file_id, tag,
+    tag_source) rows are left alone rather than rewritten — re-running a
+    tagging pass should be cheap and should not churn created_at.
+    """
+    rows = [(p, t) for p, t in rows if t]
+    if not rows:
+        return 0
+
+    inserted = 0
+    with Session() as session:
+        for chunk in _chunks(rows):
+            by_path = {}
+            for path, tags in chunk:
+                by_path.setdefault(str(path), set()).update(tags)
+
+            id_rows = session.query(File.id, File.path).filter(
+                File.path.in_(list(by_path))).all()
+            path_to_id = {path: fid for fid, path in id_rows}
+            if not path_to_id:
+                continue
+
+            file_ids = list(path_to_id.values())
+            already = set(
+                session.query(FileTag.file_id, FileTag.tag)
+                .filter(FileTag.file_id.in_(file_ids))
+                .filter(FileTag.tag_source == tag_source)
+                .all()
+            )
+
+            new_rows = []
+            for path, tags in by_path.items():
+                file_id = path_to_id.get(path)
+                if file_id is None:
+                    continue
+                for tag in tags:
+                    if (file_id, tag) in already:
+                        continue
+                    already.add((file_id, tag))
+                    new_rows.append({
+                        "file_id": file_id, "tag": tag,
+                        "tag_source": tag_source, "confidence": confidence,
+                        "created_at": datetime.utcnow(),
+                    })
+
+            if new_rows:
+                session.bulk_insert_mappings(FileTag, new_rows)
+                inserted += len(new_rows)
+            session.commit()
+    return inserted

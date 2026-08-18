@@ -334,3 +334,68 @@ Always use `--dry-run` to preview changes before executing them. Use `--execute`
 ## 🧑‍💻 Maintainer
 
 [📎 phelgetar @ GitHub](https://github.com/phelgetar)
+
+---
+
+## Web front end
+
+The three apps that used to be separate — this deduplicator, `doc-classifier`,
+and `File_Classifier` — now share one pipeline and one UI.
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+./.venv/bin/python -m server.app
+```
+
+It prints the URL (first free port from 8000) and binds to localhost only.
+
+| View | What it does |
+|---|---|
+| **Run** | Pick source and destination, choose options, watch every stage live with throughput and ETA. Cancel at any point. |
+| **Duplicates** | Groups by hash, largest reclaimable space first. |
+| **Plan** | The proposed destination for every file, paginated and filterable. Review before anything is written. |
+| **Jobs** | Every run this session; reopen one to review its plan. |
+
+Files are **copied**, not moved — your source tree is left exactly as it was, so
+a run is undone by deleting the destination. Copying still needs an explicit
+typed confirmation, and existing destination files are skipped rather than
+overwritten.
+
+### How the work is parallelised
+
+`core/parallel.py` decides per stage, because each one is limited by something
+different — disk, the GIL, the Ollama server, or the GPU:
+
+```bash
+./.venv/bin/python main.py --show-parallelism
+```
+
+Two things worth knowing:
+
+- **A process pool is not always a win.** Worker startup and the pickle
+  round-trip cost real time, so the pool is only built when a short serial
+  sample shows the per-item work justifies it. Cheap stages stay serial. On
+  deliberately expensive work this gives ~8x; on trivial per-file work it
+  correctly declines to fan out.
+- **Ollama is the ceiling for the local-LLM stage.** Client concurrency is read
+  from `OLLAMA_NUM_PARALLEL`; raising the client count past what the server
+  will serve buys nothing. Set that variable to use more of the machine.
+
+Override any stage with `WORKBENCH_<STAGE>_WORKERS` (e.g.
+`WORKBENCH_HASH_WORKERS=32`); setting one to `1` forces it serial, which is the
+quickest way to isolate a stage.
+
+### Classification ladder
+
+Cheapest tier first, each handling only what the one below could not:
+
+1. **Rules** (`core/classifier.py`) — free, instant, places the bulk.
+2. **Local LLM** (`--llm-classify`) — free, needs a running Ollama.
+3. **Cloud** (`--cloud-classify`) — costs money, so it runs last, on the
+   leftovers only, under a hard cap (`--cloud-cost-limit`, default $1.00)
+   enforced against real token usage. The batch is priced before the first
+   request and skipped outright if the estimate exceeds the cap. Needs
+   `ANTHROPIC_API_KEY`; the tier disables itself if that is missing.
+
+The CLI is unchanged — `core/main.py` is now a thin wrapper over
+`core/pipeline.py`, which the server drives too, so the two cannot diverge.

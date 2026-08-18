@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>File Workbench</title>
+<style>
+/* Light palette on :root so the toggle and the media query can each
+   override it without either one being the only definition. */
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --panel-2: #f0efec; --border: #dcdad4;
+  --text: #1c1b19; --muted: #6b6862; --accent: #2f6f4f; --accent-fg: #ffffff;
+  --warn: #9a5b18; --danger: #a33224; --ok: #2f6f4f;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17181a; --panel: #1f2124; --panel-2: #26282c; --border: #35383d;
+    --text: #e8e6e3; --muted: #9a9791; --accent: #6fbf8f; --accent-fg: #10201a;
+    --warn: #e0a161; --danger: #e8796a; --ok: #6fbf8f;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+}
+h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+.hw { font: 12px/1 var(--mono); color: var(--muted); }
+nav { display: flex; gap: 4px; margin-left: auto; }
+nav button {
+  background: none; border: 1px solid transparent; color: var(--muted);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+nav button:hover { background: var(--panel-2); color: var(--text); }
+nav button.on { background: var(--panel-2); color: var(--text); border-color: var(--border); }
+main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+.view { display: none; }
+.view.on { display: block; }
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px; margin-bottom: 16px;
+}
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+input[type=text], input[type=number], select {
+  width: 100%; padding: 7px 9px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font: 13px var(--mono);
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.checks { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+.checks label { display: flex; align-items: center; gap: 6px; font-size: 13px;
+  color: var(--text); margin: 0; cursor: pointer; }
+button.act {
+  background: var(--accent); color: var(--accent-fg); border: none;
+  padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+button.act:disabled { opacity: 0.45; cursor: not-allowed; }
+button.ghost {
+  background: none; color: var(--text); border: 1px solid var(--border);
+  padding: 8px 14px; border-radius: 6px; font-size: 13px; cursor: pointer;
+}
+button.danger { background: var(--danger); color: #fff; border: none;
+  padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+button.danger:disabled { opacity: 0.4; cursor: not-allowed; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.stage { margin-bottom: 10px; }
+.stage-head { display: flex; justify-content: space-between; gap: 12px;
+  font-size: 13px; margin-bottom: 4px; }
+.stage-name { font-weight: 600; }
+.stage-meta { font: 11px var(--mono); color: var(--muted); }
+.bar { height: 5px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent);
+  width: 0; transition: width 0.2s ease; }
+.stage.done .bar > i { background: var(--ok); }
+#log {
+  font: 12px/1.6 var(--mono); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px; height: 190px; overflow-y: auto; white-space: pre-wrap;
+}
+#log .warning { color: var(--warn); }
+#log .error { color: var(--danger); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.scroll { overflow-x: auto; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--border); font-weight: 600; }
+td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+.path { font: 12px var(--mono); word-break: break-all; }
+.dim { color: var(--muted); }
+.tag { display: inline-block; padding: 1px 7px; border-radius: 20px;
+  background: var(--panel-2); font-size: 11px; color: var(--muted); }
+.stats { display: flex; gap: 22px; flex-wrap: wrap; }
+.stat b { display: block; font-size: 20px; font-weight: 650; }
+.stat span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.empty { color: var(--muted); text-align: center; padding: 28px; font-size: 13px; }
+dialog {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--panel);
+  color: var(--text); padding: 20px; max-width: 480px; width: 90vw;
+}
+dialog::backdrop { background: rgba(0,0,0,0.55); }
+dialog p { font-size: 13px; }
+.pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 12px; }
+.err { color: var(--danger); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>File Workbench</h1>
+  <span class="hw" id="hw">detecting hardware…</span>
+  <nav>
+    <button data-view="run" class="on">Run</button>
+    <button data-view="dupes">Duplicates</button>
+    <button data-view="plan">Plan</button>
+    <button data-view="jobs">Jobs</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ───────────────────────── Run ───────────────────────── -->
+  <section class="view on" id="view-run">
+    <div class="card">
+      <h2>Scan</h2>
+      <div class="grid">
+        <div>
+          <label for="src">Source directory</label>
+          <input type="text" id="src" placeholder="/Users/you/Documents" spellcheck="false">
+        </div>
+        <div>
+          <label for="dst">Destination (organized copy)</label>
+          <input type="text" id="dst" placeholder="/Users/you/Organized" spellcheck="false">
+        </div>
+        <div>
+          <label for="ftypes">File types (blank = all)</label>
+          <input type="text" id="ftypes" placeholder="images,docs" spellcheck="false">
+        </div>
+        <div>
+          <label for="maxfiles">Max files (blank = no limit)</label>
+          <input type="number" id="maxfiles" min="1" placeholder="">
+        </div>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="usedb"> Use database (enables resume, tags, image metadata)</label>
+        <label><input type="checkbox" id="skipdupes"> Skip duplicates</label>
+        <label><input type="checkbox" id="llm"> Local LLM for unresolved files</label>
+        <label><input type="checkbox" id="cloud"> Cloud escalation</label>
+        <label><input type="checkbox" id="aitag"> AI tagging</label>
+        <label><input type="checkbox" id="images"> Image metadata</label>
+      </div>
+      <div class="grid" id="cloudopts" style="display:none; margin-top:12px">
+        <div>
+          <label for="cap">Cloud spend cap (USD)</label>
+          <input type="number" id="cap" value="1.00" min="0.01" step="0.25">
+        </div>
+        <div>
+          <label for="cmodel">Cloud model (blank = claude-opus-5)</label>
+          <input type="text" id="cmodel" placeholder="claude-opus-5" spellcheck="false">
+        </div>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="act" id="start">Start scan</button>
+        <button class="ghost" id="cancel" disabled>Cancel</button>
+        <span id="jobstatus" class="dim"></span>
+      </div>
+      <div class="err" id="starterr"></div>
+    </div>
+
+    <div class="card">
+      <h2>Progress</h2>
+      <div id="stages"><div class="empty">No run in progress.</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Log</h2>
+      <div id="log"></div>
+    </div>
+
+    <div class="card">
+      <h2>Result</h2>
+      <div id="result"><div class="empty">Nothing yet.</div></div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── Duplicates ─────────────────────── -->
+  <section class="view" id="view-dupes">
+    <div class="card">
+      <h2>Duplicate groups</h2>
+      <div id="dupesum" class="stats" style="margin-bottom:14px"></div>
+      <div class="scroll"><table id="dupetable">
+        <thead><tr><th>Copies</th><th>Each</th><th>Reclaimable</th><th>Paths</th></tr></thead>
+        <tbody><tr><td colspan="4"><div class="empty">Run a scan first.</div></td></tr></tbody>
+      </table></div>
+      <div class="pager" id="dupepager"></div>
+    </div>
+  </section>
+
+  <!-- ────────────────────── Plan review ────────────────────── -->
+  <section class="view" id="view-plan">
+    <div class="card">
+      <h2>Proposed moves</h2>
+      <div class="row" style="margin-bottom:12px">
+        <input type="text" id="planq" placeholder="Filter by path…" style="max-width:280px">
+        <select id="plancat" style="max-width:180px"><option value="">All categories</option></select>
+        <button class="ghost" id="planreload">Apply</button>
+        <span class="dim" id="plancount"></span>
+      </div>
+      <div class="scroll"><table id="plantable">
+        <thead><tr><th>Type</th><th>Source</th><th>Destination</th><th>Size</th></tr></thead>
+        <tbody><tr><td colspan="4"><div class="empty">Run a scan first.</div></td></tr></tbody>
+      </table></div>
+      <div class="pager" id="planpager"></div>
+    </div>
+    <div class="card">
+      <h2>Execute</h2>
+      <p class="dim" style="margin-top:0">
+        Copies each file into its planned destination, preserving timestamps.
+        Your source files are left exactly where they are, so this is
+        reversible by deleting the destination tree — but a large plan can use
+        a lot of disk. Existing destination files are skipped, never
+        overwritten, and every operation is logged when the database is on.
+      </p>
+      <button class="danger" id="exec" disabled>Copy files into destination…</button>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── Jobs ───────────────────────── -->
+  <section class="view" id="view-jobs">
+    <div class="card">
+      <h2>Jobs this session</h2>
+      <div class="scroll"><table id="jobtable">
+        <thead><tr><th>Started</th><th>Kind</th><th>Status</th><th>Source</th><th></th></tr></thead>
+        <tbody><tr><td colspan="5"><div class="empty">No jobs yet.</div></td></tr></tbody>
+      </table></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="confirm">
+  <h2 style="margin-top:0;font-size:15px">Copy files into the destination?</h2>
+  <p id="confirmbody"></p>
+  <p>Type <b>COPY FILES</b> to confirm:</p>
+  <input type="text" id="confirmtext" spellcheck="false" autocomplete="off">
+  <div class="row" style="margin-top:16px;justify-content:flex-end">
+    <button class="ghost" id="confirmno">Cancel</button>
+    <button class="danger" id="confirmyes" disabled>Copy files</button>
+  </div>
+</dialog>
+
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

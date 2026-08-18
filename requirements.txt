@@ -1,27 +1,49 @@
-# Core dependencies — everything needed for scanning, hashing,
-# classification, organization, database caching, and notifications.
+# Unified File Workbench — dependencies
 #
-# For AI image content analysis (CLIP), also install:
-#   pip install -r requirements-ai.txt
+# Merged from the three apps this project absorbed:
+#   File_Deduplification  scan / hash / dedup / organize / execute (MySQL)
+#   doc-classifier        text extraction, RAG index, hybrid search
+#   File_Classifier       cloud (Claude) classification escalation
+#
+# Verified on Python 3.14.7 (Homebrew, arm64). Create the venv with:
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#
+# Optional extras live in requirements-ai.txt (CLIP image content tagging).
 
-# Configuration
+# --- Configuration ---
 python-dotenv>=1.0.0
 PyYAML>=6.0
 
-# Database (MySQL via SQLAlchemy)
+# --- Database (MySQL via SQLAlchemy) ---
 sqlalchemy>=2.0.21
 pymysql>=1.1.0
 
-# Document/media metadata extraction
+# --- Web backend + front end delivery ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+
+# --- Text extraction (classify/extract.py) ---
 pymupdf>=1.22.5
 python-docx>=1.0.0
+python-pptx>=0.6.23
+openpyxl>=3.1
+pypdf>=4.0
+
+# --- Media / image metadata ---
 mutagen>=1.45.1
+pillow>=10.0
+pillow-heif>=0.16
+pytesseract>=0.3.10
 
-# Image metadata (EXIF/IPTC)
-pillow
+# --- RAG index (search/rag_store.py) ---
+numpy>=1.26
 
-# Notifications (Slack webhook via HTTP)
-requests
+# --- HTTP: Ollama client, Slack notifications, cloud APIs ---
+requests>=2.31
 
-# GUI preview
-PySimpleGUI>=4.60.5
+# --- Cloud classification tier (classify/cloud.py) ---
+# Only needed when escalating unresolved files to Claude; the rules and
+# local-Ollama tiers work without it, and the tier disables itself when
+# the SDK or a credential is missing.
+anthropic>=0.40

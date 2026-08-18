@@ -21,3 +21,6 @@ output/
 .file_dedup_cache.json
 dry_run_preview_*.json
 dry_run_preview_*.txt
+
+# Per-job artifacts written by server/jobs.py (plans, duplicates, results)
+.workbench/
