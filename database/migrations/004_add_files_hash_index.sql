@@ -23,5 +23,9 @@
 -- minutes and roughly 500 MB, since the hash is a 64-character digest.
 -- ---------------------------------------------------------------------
 
+-- ALGORITHM=INPLACE, LOCK=NONE are explicit on purpose: they make MySQL
+-- refuse the statement if it cannot build the index without blocking
+-- writes, rather than quietly locking the table for the duration.
 ALTER TABLE files
-    ADD INDEX idx_files_hash (hash);
+    ADD INDEX idx_files_hash (hash),
+    ALGORITHM=INPLACE, LOCK=NONE;
