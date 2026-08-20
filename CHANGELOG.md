@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixes
+- 🐛 **FIX**: Atomic packages (`.app`, `.framework`, bundle-style `.pkg`) never arrived at the destination. The scanner correctly hands them over whole — it does not descend into them — but `execute_plan()` called `shutil.copy2` unconditionally, which raises `IsADirectoryError` on a directory. The bundle was counted as an error and skipped while the run still reported success. Bundles now copy with `shutil.copytree(..., symlinks=True)`; preserving symlinks matters because a `.framework`'s `Versions/Current` is a link, and resolving it both duplicates the payload and produces a bundle that no longer matches the original.
+
 ## [v0.11.0] – 2026-08-17
 
 ### 🚀 Major Features

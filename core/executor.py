@@ -74,9 +74,22 @@ def execute_plan(plan: List[Tuple[FileInfo, Path]], write_metadata: bool = False
                 logger.warning(f"Destination already exists, skipping: {dest}")
                 continue
 
-            # Copy file with metadata preserved
-            shutil.copy2(src, dest)
-            logger.info(f"✅ Copied: {src} -> {dest}")
+            # Copy with metadata preserved. Atomic packages (.app,
+            # .framework, bundle-style .pkg) are directories, and the
+            # scanner deliberately hands them over whole rather than
+            # descending into them — so copy2 would raise IsADirectoryError
+            # and the bundle would silently never arrive.
+            #
+            # symlinks=True is load-bearing for macOS bundles: a
+            # .framework's Versions/Current is a symlink, and resolving
+            # it instead of copying it both duplicates the payload and
+            # produces a bundle that no longer matches the original.
+            if src.is_dir():
+                shutil.copytree(src, dest, symlinks=True)
+                logger.info(f"✅ Copied bundle: {src} -> {dest}")
+            else:
+                shutil.copy2(src, dest)
+                logger.info(f"✅ Copied: {src} -> {dest}")
             success_count += 1
 
             # Log operation to database if enabled

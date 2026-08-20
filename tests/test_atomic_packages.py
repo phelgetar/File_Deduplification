@@ -241,3 +241,42 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def test_atomic_package_bundle_is_copied_whole(tmp_path):
+    """A .app is a directory, and execute_plan must copy it as a bundle.
+
+    Regression: the executor used shutil.copy2 unconditionally, so every
+    atomic package raised IsADirectoryError and silently never arrived —
+    the run still reported success, and the bundle was simply absent from
+    the destination.
+    """
+    import shutil
+    from pathlib import Path
+
+    from core.executor import execute_plan
+    from models.file_info import FileInfo
+
+    src = tmp_path / "src"
+    app = src / "Demo.app" / "Contents" / "MacOS"
+    app.mkdir(parents=True)
+    (src / "Demo.app" / "Contents" / "Info.plist").write_text("<plist/>")
+    (app / "Demo").write_text("binary")
+
+    # macOS bundles contain symlinks; copying must preserve them as links
+    # rather than resolving them into duplicated payload.
+    versions = src / "Demo.app" / "Contents" / "Frameworks" / "F.framework" / "Versions"
+    (versions / "A").mkdir(parents=True)
+    (versions / "Current").symlink_to("A")
+
+    dest = tmp_path / "out" / "Demo.app"
+    bundle = src / "Demo.app"
+    info = FileInfo(path=bundle, size=1, hash="abc", type="installer")
+
+    execute_plan([(info, dest)])
+
+    assert dest.is_dir(), "bundle was not copied"
+    assert (dest / "Contents" / "Info.plist").exists(), "bundle contents missing"
+    assert (dest / "Contents" / "MacOS" / "Demo").read_text() == "binary"
+    assert (dest / "Contents" / "Frameworks" / "F.framework" /
+            "Versions" / "Current").is_symlink(), "symlink was resolved, not preserved"
