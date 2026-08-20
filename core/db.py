@@ -17,7 +17,7 @@
 # Last Modified: 2026-08-17 by Tim Canady
 #
 # Revision History:
-# - 0.7.0 (2026-08-17): Bulk helpers (get_file_ids, get_classified_paths, save_classifications_bulk, save_file_tags_bulk) — the per-file helpers issued one query per file (and per tag), which dominated the wall clock once the CPU stages were parallelised — Tim Canady
+# - 0.7.0 (2026-08-17): Bulk helpers (get_file_ids, get_classified_categories, save_classifications_bulk, save_file_tags_bulk) — the per-file helpers issued one query per file (and per tag), which dominated the wall clock once the CPU stages were parallelised — Tim Canady
 # - 0.6.0 (2026-07-20): Circuit breaker — after repeated consecutive DB failures mid-run, stop attempting DB writes (no per-file timeout stalls); bounded connect timeout — Tim Canady
 # - 0.5.0 (2025-11-12): Fixed schema, removed FK constraints, added classification save — Tim Canady
 # - 0.2.0 (2025-11-06): Added context manager support for sessions — Tim Canady
@@ -462,23 +462,26 @@ def get_file_ids(paths):
 
 
 @_db_guard(default=None)
-def get_classified_paths(paths):
-    """The subset of `paths` that already carry a classification.
+def get_classified_categories(paths):
+    """Map {path -> category} for paths that already have a classification.
 
-    This is the resume check that classify_file() does one file at a
-    time. Doing it in bulk before the classify stage lets us skip work
-    entirely rather than pay a query per file to discover we can.
+    Returns the category, not merely the fact one exists: the caller
+    skips re-classifying these files, so it needs the stored answer to
+    put back on the FileInfo. Returning a bare set of paths meant
+    resumed files came through with type=None and were planned as
+    unclassified — the resume path silently discarded every category.
     """
-    classified = set()
+    found = {}
     with Session() as session:
         for chunk in _chunks(str(p) for p in paths):
-            rows = (session.query(File.path)
+            rows = (session.query(File.path, Classification.category)
                     .join(Classification, Classification.file_id == File.id)
                     .filter(File.path.in_(chunk))
                     .filter(Classification.category.isnot(None))
                     .all())
-            classified.update(r[0] for r in rows)
-    return classified
+            for path, category in rows:
+                found[path] = category
+    return found
 
 
 @_db_guard(default=0)

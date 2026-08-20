@@ -378,17 +378,26 @@ def run_pipeline(
 def _stage_classify(config, hashed, p, cancelled, result) -> List[FileInfo]:
     """Rule classification in processes, then LLM fallback in threads."""
     todo = hashed
-    cached = {}
 
     # Resume: one bulk query replaces the per-file lookup classify_file()
     # would otherwise do, which was a full round trip per file.
+    #
+    # The cached category is read back onto the FileInfo, not just used
+    # to skip work. Skipping without restoring it left every resumed
+    # file with type=None, so a re-run planned the whole tree as
+    # unclassified.
     if config.use_db:
-        from core.db import get_classified_paths
-        known = get_classified_paths(f.path for f in hashed) or set()
+        from core.db import get_classified_categories
+        known = get_classified_categories(f.path for f in hashed) or {}
         if known:
+            for f in hashed:
+                category = known.get(str(f.path))
+                if category:
+                    f.type = category
             todo = [f for f in hashed if str(f.path) not in known]
             result.classified_from_cache = len(hashed) - len(todo)
-            p.log(f"Resuming: {result.classified_from_cache:,} files already classified")
+            p.log(f"Resuming: {result.classified_from_cache:,} files already "
+                  f"classified (categories restored from the database)")
 
     p.stage_start(parallel.CLASSIFY, "Classifying files", total=len(todo))
     fresh = list(parallel.map_stage(

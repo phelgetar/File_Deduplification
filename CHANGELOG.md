@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixes
+- 🐛 **FIX**: Re-running a scan with `--use-db` planned every already-classified file as **unclassified**. The resume path used a bulk query to skip files that already had a classification, but only asked *whether* one existed — it never read the category back onto the `FileInfo`. The per-file `classify_file(use_db=True)` it replaced did (`file_info.type = existing[0]`), so the bulk rewrite silently dropped every cached category. On a re-scan of an already-indexed folder this meant 100 of 100 planned rows had no type. `get_classified_paths()` is now `get_classified_categories()` and returns `{path: category}`.
+
 ### 🗑️ Duplicate deletion, undo, and companion protection
 - ✨ **NEW**: Duplicates can now be deleted from the Duplicates tab — by **moving them to the Trash**, never unlinking. The Trash used is the one on the file's *own* volume (`/Volumes/<vol>/.Trashes/<uid>/`), so removing a 40 GB video from the NAS is a rename rather than a copy across the network onto the boot disk.
 - ✨ **NEW**: **Put back last batch** restores the most recent deletion to its original paths, driven by the `operations` log. Restore refuses rather than overwrites if something already occupies the original path.
