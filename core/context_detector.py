@@ -41,6 +41,9 @@ class ContextInfo:
     matched_pattern: str
     metadata: Dict[str, str]
     preserve_from_index: int  # Index in path where preservation should start
+    # True  -> file in Media/Images/<context>/…, grouped by what it is
+    # False -> file in <context>/…, keeping a record set together
+    group_by_category: bool = True
 
 
 @dataclass
@@ -185,7 +188,8 @@ class ContextDetector:
                         priority=context.get('priority', 0),
                         matched_pattern=pattern,
                         metadata=metadata,
-                        preserve_from_index=pattern_idx
+                        preserve_from_index=pattern_idx,
+                        group_by_category=context.get('group_by_category', True)
                     )
 
                     logger.debug(f"Context detected: {context['name']} for {file_path}")

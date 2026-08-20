@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🗂️ Organizer rules
+- ✨ **NEW**: `group_by_category` per semantic context in `config/semantic_paths.yaml`. Contexts previously overrode file type outright, so a photo on the Desktop was planned as `Desktop/100JVCSO/PIC_0065.JPG` and its category existed only in the database. Location-style contexts (Desktop, Work, Education, Personal, Hobbies) now file by category first — `Media/Images/Desktop/100JVCSO/PIC_0065.JPG`, `Docs/Word/Desktop/canadytw_12192006.doc` — while record sets (`Personal - Disability/VA`, `Personal/Family`) keep `group_by_category: false` so a DICOM series and its cover letter are not split across `Media/Images` and `Docs`. Set per context; the flag defaults to true.
+
 ### 🐛 Fixes
 - 🐛 **FIX**: Re-running a scan with `--use-db` planned every already-classified file as **unclassified**. The resume path used a bulk query to skip files that already had a classification, but only asked *whether* one existed — it never read the category back onto the `FileInfo`. The per-file `classify_file(use_db=True)` it replaced did (`file_info.type = existing[0]`), so the bulk rewrite silently dropped every cached category. On a re-scan of an already-indexed folder this meant 100 of 100 planned rows had no type. `get_classified_paths()` is now `get_classified_categories()` and returns `{path: category}`.
 

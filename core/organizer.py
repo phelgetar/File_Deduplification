@@ -561,8 +561,23 @@ def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_struc
         # so adding root_folder as well just repeats it — the source of
         # destinations like Desktop/Desktop/… .
         context_parts = context.destination.split('/')
+
+        # group_by_category puts the file under its category first, so a
+        # photo on the Desktop lands in Media/Images/Desktop/… rather than
+        # in Desktop/ with its type recorded only in the database.
+        # Contexts that are a record set rather than a location set it
+        # False, so a medical series and its cover letter stay together
+        # instead of being split across Media/Images and Docs.
+        if getattr(context, "group_by_category", True) and file_info.type:
+            category_folder = get_custom_folder(file_info.type)
+            if category_folder:
+                subfolders.extend(str(category_folder).split('/'))
+            else:
+                subfolders.append(file_info.type.replace(" ", "_"))
+
         if (_should_add_root_folder(base_dir, root_folder)
-                and root_folder not in context_parts):
+                and root_folder not in context_parts
+                and root_folder not in subfolders):
             subfolders.append(root_folder)
 
         # Add context destination (e.g., "Personal/Disability/VA")

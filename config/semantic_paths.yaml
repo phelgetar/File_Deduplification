@@ -27,6 +27,9 @@ semantic_contexts:
       # more than VA medical records. Add a narrower pattern if needed.
     destination: "Personal/Disability/VA"
     preserve_structure: true
+    # A record set: a DICOM series and its cover letter belong
+    # together, so type does not split them apart.
+    group_by_category: false
     priority: 100
     description: "VA medical records, disability documents, medical imaging"
     examples:
@@ -47,6 +50,9 @@ semantic_contexts:
       - "/workcode/"
     destination: "Work"
     preserve_structure: true
+    # A location, not a record set: file by what each thing IS,
+    # then keep the structure beneath the category folder.
+    group_by_category: true
     priority: 90
     description: "Work-related files, scripts, documents"
     examples:
@@ -71,6 +77,9 @@ semantic_contexts:
       - "/naval postgraduate school/"
     destination: "Education"
     preserve_structure: true
+    # A location, not a record set: file by what each thing IS,
+    # then keep the structure beneath the category folder.
+    group_by_category: true
     priority: 90
     description: "Educational materials, courses, academic work"
     examples:
@@ -90,6 +99,9 @@ semantic_contexts:
       - "/sister/"
     destination: "Personal/Family"
     preserve_structure: true
+    # A record set: a DICOM series and its cover letter belong
+    # together, so type does not split them apart.
+    group_by_category: false
     priority: 85
     description: "Family-related files, photos, documents"
     examples:
@@ -107,6 +119,9 @@ semantic_contexts:
       - "/niel-degrass-tyson/"
     destination: "Personal"
     preserve_structure: true
+    # A location, not a record set: file by what each thing IS,
+    # then keep the structure beneath the category folder.
+    group_by_category: true
     priority: 80
     description: "General personal files"
     examples:
@@ -126,6 +141,9 @@ semantic_contexts:
       - "/eagle/"
     destination: "Hobbies"
     preserve_structure: true
+    # A location, not a record set: file by what each thing IS,
+    # then keep the structure beneath the category folder.
+    group_by_category: true
     priority: 75
     description: "Hobby-related files and projects"
     examples:
@@ -142,6 +160,9 @@ semantic_contexts:
       - "/desktop-anywhere/"
     destination: "Desktop"
     preserve_structure: true
+    # A location, not a record set: file by what each thing IS,
+    # then keep the structure beneath the category folder.
+    group_by_category: true
     priority: 70
     description: "Desktop files and shortcuts"
     examples:
