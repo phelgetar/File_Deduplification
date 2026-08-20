@@ -554,23 +554,43 @@ def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_struc
         # Split path from pattern onwards
         parts_from_pattern = Path(path_from_pattern).parts
 
-        # Build destination: base_dir/root_folder/context_destination/preserved_structure
+        # Build destination: base_dir/context_destination/preserved_structure
         subfolders = []
-        if _should_add_root_folder(base_dir, root_folder):
+
+        # The context destination is itself the grouping (e.g. "Desktop"),
+        # so adding root_folder as well just repeats it — the source of
+        # destinations like Desktop/Desktop/… .
+        context_parts = context.destination.split('/')
+        if (_should_add_root_folder(base_dir, root_folder)
+                and root_folder not in context_parts):
             subfolders.append(root_folder)
 
         # Add context destination (e.g., "Personal/Disability/VA")
-        for part in context.destination.split('/'):
-            subfolders.append(part)
+        subfolders.extend(context_parts)
 
-        # Preserve the structure from the pattern onwards (skip the pattern directory itself)
-        # This preserves subdirectories and files within the context
-        if len(parts_from_pattern) > 1:
-            # Skip the first part (the pattern directory) and preserve the rest
-            for part in parts_from_pattern[1:]:
-                subfolders.append(part)
+        # Preserve the structure below the matched directory.
+        #
+        # The patterns carry surrounding slashes ("/desktop/"), so
+        # path_from_pattern begins with a separator and Path().parts
+        # yields ("/", "Desktop", …). Slicing [1:] therefore dropped the
+        # root slash and kept the matched directory — which is what put
+        # it in the destination a second time.
+        tail = [p for p in parts_from_pattern if p not in ("/", "\\")]
+        if len(tail) > 1:
+            tail = tail[1:]                   # skip the matched directory
+            # The destination may already spell out folders the tail
+            # repeats: matching "/disability/" under a destination of
+            # "Personal/Disability/VA" leaves a tail starting with "VA",
+            # giving …/VA/VA/. Drop the longest overlap between the end
+            # of the destination and the start of the tail.
+            overlap = 0
+            for k in range(min(len(context_parts), len(tail)), 0, -1):
+                if ([p.lower() for p in context_parts[-k:]]
+                        == [p.lower() for p in tail[:k]]):
+                    overlap = k
+                    break
+            subfolders.extend(tail[overlap:])
         else:
-            # Just the filename
             subfolders.append(file_info.path.name)
 
         destination = base_dir.joinpath(*subfolders)
