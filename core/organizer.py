@@ -28,6 +28,7 @@
 ###################################################################
 
 from collections import defaultdict
+from functools import lru_cache
 from models.file_info import FileInfo
 from typing import List, Tuple, Dict, Optional
 from pathlib import Path
@@ -93,6 +94,60 @@ def organize_files(file_infos: list[FileInfo], base_dir: Path) -> dict:
         plan[target_dir].append(file_info)
 
     return plan
+
+# Files that mean "a developer built this here". A folder called src,
+# bin or lib is not evidence on its own — those names are common in
+# photo libraries, installers and course exports, and trusting them
+# filed JPEGs under Code/. Requiring a marker costs one directory
+# listing per candidate folder and is cached.
+CODE_PROJECT_MARKERS = {
+    ".git", ".hg", ".svn", "package.json", "pyproject.toml", "setup.py",
+    "setup.cfg", "requirements.txt", "Cargo.toml", "go.mod", "pom.xml",
+    "build.gradle", "build.gradle.kts", "Gemfile", "composer.json",
+    "Makefile", "CMakeLists.txt", "tsconfig.json", ".xcodeproj",
+    ".xcworkspace", "Package.swift", "mix.exs", "build.sbt",
+}
+
+
+@lru_cache(maxsize=50_000)
+def _has_code_marker(directory: str) -> bool:
+    try:
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if entry.name in CODE_PROJECT_MARKERS:
+                    return True
+                if any(entry.name.endswith(m) for m in (".xcodeproj", ".xcworkspace")):
+                    return True
+    except OSError:
+        pass
+    return False
+
+
+def _looks_like_code_project(path: Path, levels: int = 4) -> bool:
+    """True when a project marker sits at or above this file.
+
+    Bounded to a few levels so a marker at the repository root still
+    counts without walking to /.
+    """
+    for parent in list(path.parents)[:levels]:
+        if _has_code_marker(str(parent)):
+            return True
+    return False
+
+
+def _category_folder(category: str) -> list:
+    """Folder segments for a category, from the one mapping that owns it.
+
+    The structure-preserving planners each hardcoded their own literal
+    ("web", "backup", "application"), which disagreed with
+    CATEGORY_FOLDER_MAP ("Web", "Backups", "Applications") — so a .pkg
+    could land in application/ while a .app landed in Installers/.
+    """
+    folder = get_custom_folder(category)
+    if folder:
+        return str(folder).split('/')
+    return [category.replace(" ", "_")]
+
 
 def _relative_under_source(file_path: Path, source_root: Optional[Path]) -> Optional[Path]:
     """The file's path relative to the scanned root, if it sits under it.
@@ -168,12 +223,15 @@ def plan_organization(
             continue
 
         # Special handling for code/scripts directories - preserve directory structure
+        # A code-shaped folder name AND a real project marker nearby.
+        # The name alone was enough before, which is why a photo album
+        # under a folder called src was planned into Code/.
         if file_info.type == "code" and any(code_dir in str(file_info.path).lower() for code_dir in [
             "/scripts/", "/script/", "/code/", "/src/", "/source/",
             "/lib/", "/libs/", "/libraries/", "/modules/", "/packages/",
             "/bin/", "/dist/", "/build/", "/out/", "/target/",
             "/xcode/", "xcode", ".xcodeproj", ".xcworkspace"
-        ]):
+        ]) and _looks_like_code_project(file_info.path):
             destination = _plan_code_project(file_info, base_dir, preserve_root_structure)
             plan.append((file_info, destination))
             logger.debug(f"Planned (code): {file_info.path} → {destination}")
@@ -287,7 +345,7 @@ def _plan_web_project(file_info: FileInfo, base_dir: Path, preserve_root_structu
         subfolders = []
         if _should_add_root_folder(base_dir, root_folder):
             subfolders.append(root_folder)
-        subfolders.append("web")  # Category folder
+        subfolders.extend(_category_folder("web"))
 
         destination = base_dir.joinpath(*subfolders, relative_from_web_root)
     else:
@@ -295,7 +353,7 @@ def _plan_web_project(file_info: FileInfo, base_dir: Path, preserve_root_structu
         subfolders = []
         if _should_add_root_folder(base_dir, root_folder):
             subfolders.append(root_folder)
-        subfolders.append("web")
+        subfolders.extend(_category_folder("web"))
         destination = base_dir.joinpath(*subfolders, file_info.path.name)
 
     return destination
@@ -346,7 +404,7 @@ def _plan_backup_project(file_info: FileInfo, base_dir: Path, preserve_root_stru
         subfolders = []
         if _should_add_root_folder(base_dir, root_folder):
             subfolders.append(root_folder)
-        subfolders.append("backup")  # Category folder
+        subfolders.extend(_category_folder("backup"))
 
         destination = base_dir.joinpath(*subfolders, relative_from_backup_root)
     else:
@@ -354,7 +412,7 @@ def _plan_backup_project(file_info: FileInfo, base_dir: Path, preserve_root_stru
         subfolders = []
         if _should_add_root_folder(base_dir, root_folder):
             subfolders.append(root_folder)
-        subfolders.append("backup")
+        subfolders.extend(_category_folder("backup"))
         destination = base_dir.joinpath(*subfolders, file_info.path.name)
 
     return destination
@@ -412,11 +470,7 @@ def _plan_code_project(file_info: FileInfo, base_dir: Path, preserve_root_struct
             subfolders.append(root_folder)
 
         # Use custom folder mapping for code category
-        custom_folder = get_custom_folder("code")
-        if custom_folder:
-            subfolders.append(str(custom_folder))
-        else:
-            subfolders.append("code")
+        subfolders.extend(_category_folder("code"))
 
         destination = base_dir.joinpath(*subfolders, relative_from_code_root)
     else:
@@ -426,11 +480,7 @@ def _plan_code_project(file_info: FileInfo, base_dir: Path, preserve_root_struct
             subfolders.append(root_folder)
 
         # Use custom folder mapping for code category
-        custom_folder = get_custom_folder("code")
-        if custom_folder:
-            subfolders.append(str(custom_folder))
-        else:
-            subfolders.append("code")
+        subfolders.extend(_category_folder("code"))
 
         destination = base_dir.joinpath(*subfolders, file_info.path.name)
 
@@ -495,7 +545,7 @@ def _plan_application_project(file_info: FileInfo, base_dir: Path, preserve_root
         subfolders = []
         if _should_add_root_folder(base_dir, root_folder):
             subfolders.append(root_folder)
-        subfolders.append("application")  # Category folder
+        subfolders.extend(_category_folder("application"))
 
         destination = base_dir.joinpath(*subfolders, relative_from_app_root)
     else:
@@ -503,7 +553,7 @@ def _plan_application_project(file_info: FileInfo, base_dir: Path, preserve_root
         subfolders = []
         if _should_add_root_folder(base_dir, root_folder):
             subfolders.append(root_folder)
-        subfolders.append("application")
+        subfolders.extend(_category_folder("application"))
         destination = base_dir.joinpath(*subfolders, file_info.path.name)
 
     return destination

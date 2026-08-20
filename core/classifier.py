@@ -42,6 +42,53 @@
 
 import mimetypes
 import logging
+
+# A PDF, a Word file and a plain-text note are all "documents", but they
+# do not belong in the same folder — the single `document` category is
+# what put PDFs and .txt files under Docs/Word. Split at classification
+# time so the folder map has something specific to key on.
+WORD_EXTENSIONS = {".doc", ".docx", ".docm", ".rtf", ".odt", ".pages", ".wpd"}
+PDF_EXTENSIONS = {".pdf", ".ps", ".djvu", ".epub", ".mobi", ".azw", ".azw3"}
+TEXT_EXTENSIONS = {".txt", ".md", ".markdown", ".log", ".readme", ".rst",
+                   ".tex", ".nfo"}
+
+
+# Extensions whose meaning does not depend on where the file sits. A
+# JPEG is a photograph in a folder called src just as much as anywhere
+# else, and the path-based code/web/application rules run before any
+# extension check — which is how photo albums under a folder named src
+# were classified as code.
+#
+# Deliberately excludes .txt, .md, .json, .xml and friends: those really
+# are part of a project when they live in one, and keeping them with it
+# is right.
+UNAMBIGUOUS_EXTENSIONS = {
+    # images
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp",
+    ".heic", ".heif", ".raw", ".cr2", ".nef", ".dng", ".psd",
+    # video
+    ".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".webm", ".m4v",
+    ".mpg", ".mpeg", ".3gp",
+    # audio
+    ".mp3", ".wav", ".flac", ".aac", ".m4a", ".ogg", ".wma", ".alac",
+    # documents and office
+    ".pdf", ".doc", ".docx", ".docm", ".rtf", ".odt", ".pages",
+    ".xls", ".xlsx", ".xlsm", ".ods", ".numbers",
+    ".ppt", ".pptx", ".pptm", ".key",
+    ".epub", ".mobi", ".azw", ".azw3", ".djvu",
+}
+
+
+def _document_category(file_extension: str) -> str:
+    """Which kind of document this is, defaulting to the generic bucket."""
+    ext = (file_extension or "").lower()
+    if ext in WORD_EXTENSIONS:
+        return "document_word"
+    if ext in PDF_EXTENSIONS:
+        return "document_pdf"
+    if ext in TEXT_EXTENSIONS:
+        return "document_text"
+    return "document"
 from models.file_info import FileInfo
 
 def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None) -> FileInfo:
@@ -103,8 +150,10 @@ def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None
     ]):
         category = "web"
 
-    # Code/Scripts directories (preserve structure - use "code" category)
-    elif any(code_dir in file_path_str.lower() for code_dir in [
+    # Code/Scripts directories (preserve structure - use "code" category).
+    # Skipped for extensions that mean the same thing anywhere.
+    elif file_extension not in UNAMBIGUOUS_EXTENSIONS and any(
+        code_dir in file_path_str.lower() for code_dir in [
         "/scripts/", "/script/", "/code/", "/src/", "/source/",
         "/lib/", "/libs/", "/libraries/", "/modules/", "/packages/",
         "/bin/", "/dist/", "/build/", "/out/", "/target/",
@@ -113,7 +162,8 @@ def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None
         category = "code"
 
     # Application and installer directories (preserve structure - use "application" category)
-    elif any(app_dir in file_path_str.lower() for app_dir in [
+    elif file_extension not in UNAMBIGUOUS_EXTENSIONS and any(
+        app_dir in file_path_str.lower() for app_dir in [
         # Installed applications
         "/packettracer/", "/packet tracer/",
         # Common installer/software directory names
@@ -142,14 +192,12 @@ def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None
         elif mime_type.startswith("text"):
             if mime_type == "text/csv" or file_extension == ".csv":
                 category = "spreadsheet"
-            elif file_extension in [".txt", ".md", ".log", ".readme"]:
-                category = "document"
             else:
-                category = "document"
+                category = _document_category(file_extension)
         elif mime_type in ["application/pdf", "application/msword",
                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                           "application/rtf"]:
-            category = "document"
+            category = _document_category(file_extension)
         elif mime_type in ["application/vnd.ms-excel",
                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                           "text/csv"]:
@@ -192,7 +240,7 @@ def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None
         # Documents
         elif file_extension in [".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt", ".md", ".tex",
                                ".pages", ".epub", ".mobi", ".azw", ".djvu"]:
-            category = "document"
+            category = _document_category(file_extension)
 
         # Spreadsheets
         elif file_extension in [".csv", ".xlsx", ".xls", ".ods", ".numbers", ".tsv"]:
@@ -348,7 +396,9 @@ def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None
     # Special handling for video subcategories
     if category == "video":
         from config.folder_mapping import detect_video_subcategory
-        video_subcategory = detect_video_subcategory(file_name)
+        # Full path, not just the name: the collection is decided by the
+        # folders the file sits in.
+        video_subcategory = detect_video_subcategory(file_info.path)
         if video_subcategory:
             category = video_subcategory
 

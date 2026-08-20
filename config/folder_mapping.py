@@ -26,8 +26,12 @@ from typing import Dict, Optional
 # Custom folder mapping: category -> relative path
 # This maps classification categories to your desired folder structure
 CATEGORY_FOLDER_MAP: Dict[str, str] = {
-    # Documents
-    'document': 'Docs/Word',
+    # Documents. 'document' is the generic fallback and must NOT be
+    # Docs/Word — that is what filed every PDF and .txt under Word.
+    'document': 'Docs',
+    'document_word': 'Docs/Word',
+    'document_pdf': 'Docs/PDF',
+    'document_text': 'Docs/Text',
     'presentation': 'Docs/PowerPoints',
     'spreadsheet': 'Docs/Spreadsheets',
 
@@ -101,35 +105,37 @@ def is_structure_preserving_category(category: str) -> bool:
 
 
 # Video filename patterns for special categorization
+# Matched against the file's DIRECTORY names, not its filename.
+#
+# These were filename substrings, and 'clip' appears in an enormous range
+# of ordinary video names — "vacation-clip.mov" was being filed as a wolf
+# video. A directory is a deliberate act of organisation; a substring of a
+# filename is a coincidence.
 VIDEO_PATTERNS = {
     'security_camera_video': [
-        'svr_video_recorder',  # SecurityCameraVideos
-        'security_cam',
-        'camera_recording'
+        'securitycameravideos', 'security_cam', 'securitycam',
+        'svr_video_recorder', 'camera_recording',
     ],
     'wolf_video': [
-        'clip',  # WolfVids (clip*.mov, clip*)
-        'wolf',
-        'wolfvid'
+        'wolfvids', 'wolf_vids', 'wolfvid',
     ]
 }
 
 
-def detect_video_subcategory(filename: str) -> Optional[str]:
-    """
-    Detect if a video file belongs to a special subcategory.
+def detect_video_subcategory(path_or_name) -> Optional[str]:
+    """Which special video collection this file belongs to, if any.
 
-    Args:
-        filename: The filename to check (lowercase)
-
-    Returns:
-        Special category name if detected, None otherwise
+    Decided by the folders the file sits in rather than by its name.
+    Accepts a full path; a bare filename simply matches nothing, which
+    is the safe answer.
     """
-    filename_lower = filename.lower()
+    directories = {part.lower().replace(" ", "").replace("-", "_")
+                   for part in Path(str(path_or_name)).parts[:-1]}
+    if not directories:
+        return None
 
     for category, patterns in VIDEO_PATTERNS.items():
         for pattern in patterns:
-            if pattern in filename_lower:
+            if pattern in directories:
                 return category
-
     return None
