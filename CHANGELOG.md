@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🛡️ Safety
+- 🐛 **FIX**: The review-and-commit summary blocked the request while it worked. Cold, it walks every candidate directory over SMB to spot companion files — over three minutes on this data — so the panel hung on first load after each restart, then answered in ~3s once the directory cache was warm. It now uses the same background-and-poll contract as `/status` and `/tree`: the request returns immediately with `{status: "computing"}` and the page polls. The cached answer is dropped whenever a decision is saved, unsaved, deleted or undone, so it can never show a stale total.
+
 - 🐛 **FIX**: Zero-byte files were all grouped as one duplicate set. Every empty file hashes to `e3b0c442…` (SHA-256 of the empty string), so this project's own inventory had a single "duplicate group" of **149,296 members** — and it had been resolved, meaning one click on Review-and-trash would have moved 149,295 files to the Trash to reclaim **0 bytes**, taking `.localized`, empty `__init__.py`, `.gitkeep` and other marker files with them. Emptiness is usually the point of such a file, so byte-identity is not evidence of redundancy: zero-byte files are now excluded from duplicate grouping outright, in the detector and again in the delete path so a resolution saved earlier cannot act on them.
 - ⚡ This also fixes the review-and-commit summary, which had to stat 149,785 candidate paths over SMB and never returned. It now answers in **3.0s**.
 

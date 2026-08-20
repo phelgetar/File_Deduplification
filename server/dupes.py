@@ -299,6 +299,7 @@ def api_delete_resolution(hash_val: str):
     from core.db import delete_duplicate_resolution
     if not delete_duplicate_resolution(hash_val):
         raise HTTPException(404, "No resolution recorded for that group.")
+    _invalidate_pending()
     return {"unresolved": hash_val}
 
 
@@ -444,9 +445,14 @@ def _deletion_candidates(only: Optional[list] = None) -> dict:
             "skipped_empty": skipped_empty}
 
 
-@router.get("/pending")
-def api_pending():
-    """Final-confirmation summary: what would be trashed, and what won't."""
+# Same treatment as /status and /tree. Cold, this walks every candidate
+# directory over SMB to spot companion files and takes minutes; warm it
+# is ~3s. Blocking the request meant the commit panel hung on first load
+# after every restart.
+_pending_cache: dict = {}
+
+
+def _compute_pending() -> dict:
     summary = _deletion_candidates()
     from core.db import count_trashed
     return {
@@ -460,6 +466,51 @@ def api_pending():
         "already_trashed": count_trashed(),
         "sample": summary["paths"][:20],
     }
+
+
+def _compute_pending_in_thread():
+    try:
+        data = _compute_pending()
+        with _cache_lock:
+            _pending_cache.update({"status": "ready", "data": data, "ts": time.time()})
+    except Exception as e:
+        logger.warning("pending summary failed: %s", e)
+        with _cache_lock:
+            _pending_cache.update({"status": "error", "error": str(e), "ts": time.time()})
+
+
+@router.get("/pending")
+def api_pending(refresh: bool = False):
+    """Final-confirmation summary: what would be trashed, and what won't.
+
+    Never blocks; the client polls until status flips to ready. The cache
+    is short-lived because saving a decision changes the answer.
+    """
+    ttl = 120
+    with _cache_lock:
+        entry = dict(_pending_cache) if _pending_cache else None
+        if entry:
+            fresh = time.time() - entry["ts"] < ttl
+            if entry["status"] == "computing":
+                return {"status": "computing",
+                        "elapsed_seconds": round(time.time() - entry["started"], 1)}
+            if entry["status"] == "ready" and fresh and not refresh:
+                return {"status": "ready", **entry["data"]}
+            if entry["status"] == "error" and fresh and not refresh:
+                raise HTTPException(500, f"Summary failed: {entry['error']}")
+        _pending_cache.clear()
+        _pending_cache.update({"status": "computing", "started": time.time(),
+                               "ts": time.time()})
+
+    threading.Thread(target=_compute_pending_in_thread, daemon=True,
+                     name="dup-pending").start()
+    return {"status": "computing", "elapsed_seconds": 0}
+
+
+def _invalidate_pending():
+    """Drop the cached summary after anything that changes the answer."""
+    with _cache_lock:
+        _pending_cache.clear()
 
 
 @router.post("/delete")
@@ -493,6 +544,7 @@ def api_delete(req: DeleteRequest):
     if ok and not logged:
         logger.error("Trashed %d files but logged 0 — undo will not see them", len(ok))
 
+    _invalidate_pending()
     return {
         "trashed": len(ok),
         "failed": len(failed),
@@ -538,5 +590,6 @@ def api_undo():
             failures.append({"path": item["original"], "error": problem})
 
     mark_deletions_restored(restored_ids)
+    _invalidate_pending()
     return {"restored": len(restored_ids), "failed": len(failures),
             "failures": failures[:20]}

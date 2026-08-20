@@ -671,7 +671,17 @@ async function refreshPending() {
   const note = $("pendingnote");
   const prot = $("protectednote");
   try {
-    const p = await api("/api/db/duplicates/pending");
+    // Cold, this walks the candidate directories over the network and can
+    // take minutes; the server hands back {status:"computing"} and we poll.
+    let p = await api("/api/db/duplicates/pending");
+    while (p.status === "computing") {
+      sum.innerHTML =
+        `<div class="stat"><b>…</b><span>working out what would be trashed ` +
+        `(${Math.round(p.elapsed_seconds || 0)}s)</span></div>`;
+      $("commitbtn").disabled = true;
+      await new Promise((r) => setTimeout(r, 2000));
+      p = await api("/api/db/duplicates/pending");
+    }
     sum.innerHTML =
       `<div class="stat"><b>${num(p.groups)}</b><span>groups decided</span></div>` +
       `<div class="stat"><b>${num(p.files)}</b><span>copies to trash</span></div>` +
@@ -680,6 +690,8 @@ async function refreshPending() {
     const bits = [];
     if (p.missing) bits.push(`${num(p.missing)} already gone from disk`);
     if (p.already_trashed) bits.push(`${num(p.already_trashed)} currently in the Trash`);
+    if (p.skipped_empty)
+      bits.push(`${num(p.skipped_empty)} zero-byte files excluded (deleting them frees nothing)`);
     note.textContent = bits.length
       ? bits.join(" · ")
       : "Kept copies are never touched, so no group can lose its last copy.";
@@ -716,7 +728,11 @@ async function refreshPending() {
 const trashDlg = $("trashconfirm");
 
 $("commitbtn").onclick = async () => {
-  const p = await api("/api/db/duplicates/pending");
+  let p = await api("/api/db/duplicates/pending");
+  while (p.status === "computing") {
+    await new Promise((r) => setTimeout(r, 1500));
+    p = await api("/api/db/duplicates/pending");
+  }
   $("trashbody").innerHTML =
     `About to move <b>${num(p.files)}</b> duplicate file(s) to the Trash, ` +
     `reclaiming <b>${bytes(p.bytes)}</b> across ${num(p.groups)} group(s).<br><br>` +
