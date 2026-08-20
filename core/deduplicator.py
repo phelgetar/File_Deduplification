@@ -35,12 +35,33 @@ def detect_duplicates(files: List[FileInfo], use_db: bool = False) -> List[FileI
     # Group files by hash
     hash_groups = defaultdict(list)
 
+    # SHA-256 of the empty string. Every zero-byte file produces it, so
+    # without this they collapse into one enormous "duplicate" group —
+    # 149,296 of them in this project's own inventory.
+    #
+    # They are excluded rather than merely down-ranked, for two reasons:
+    # deleting them reclaims nothing (they are empty), and emptiness is
+    # frequently the whole point of the file — .localized, .gitkeep, an
+    # empty __init__.py, lock and marker files. Being byte-identical is
+    # not evidence of redundancy here.
+    EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+    empty_skipped = 0
     for file_info in files:
         # Skip metadata-only files (no hash)
         if file_info.hash == "METADATA_ONLY":
             continue
 
+        if file_info.hash == EMPTY_SHA256 or file_info.size == 0:
+            empty_skipped += 1
+            continue
+
         hash_groups[file_info.hash].append(file_info)
+
+    if empty_skipped:
+        logging.info(f"  ⏭️  {empty_skipped:,} zero-byte files excluded from "
+                     f"duplicate grouping (identical by definition, and worth "
+                     f"0 bytes to delete)")
 
     # User decisions from previous reviews: {hash: [paths to keep]}.
     # A resolved group is settled without asking again — chosen copies

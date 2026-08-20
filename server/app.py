@@ -37,6 +37,7 @@ import json
 import logging
 import socket
 import subprocess
+import time
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -55,7 +56,19 @@ logger = logging.getLogger(__name__)
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
+# Bumped whenever a route is added, removed, or changes shape.
+#
+# index.html and app.js are read from disk on every request, so a browser
+# always gets the current front end — but the routes are whatever the
+# Python process loaded at startup. A server left running across an
+# update therefore serves a new UI against old endpoints, and the only
+# symptom is a bare 404. The front end compares this number against its
+# own and says plainly that the server needs restarting.
+API_VERSION = 2
+
 app = FastAPI(title="File Workbench")
+
+_STARTED_AT = time.time()
 app.include_router(dupes_router)
 
 
@@ -127,6 +140,8 @@ def api_system():
     """Hardware and per-stage parallelism, for the Run screen."""
     hw = parallel.hardware()
     return {
+        "api_version": API_VERSION,
+        "started_at": _STARTED_AT,
         "hardware": {
             "logical_cpus": hw.logical, "performance_cores": hw.performance,
             "efficiency_cores": hw.efficiency, "memory_gb": hw.memory_gb,

@@ -14,6 +14,11 @@
 // Version: 0.1.0
 //
 
+// Must match server/app.py's API_VERSION. The browser always loads the
+// current app.js, but the server may be an older process that never
+// restarted — this turns that into a clear message instead of a 404.
+const REQUIRED_API = 2;
+
 const $ = (id) => document.getElementById(id);
 const api = async (path, opts) => {
   const res = await fetch(path, opts);
@@ -68,9 +73,24 @@ $("cloud").onchange = (e) => {
 
 // ───────────────────────────── system ─────────────────────────────
 
+function staleServerBanner(found) {
+  if (document.getElementById("stalebanner")) return;
+  const bar = document.createElement("div");
+  bar.id = "stalebanner";
+  bar.style.cssText =
+    "background:var(--danger);color:#fff;padding:10px 20px;font-size:13px;" +
+    "position:sticky;top:0;z-index:20";
+  bar.textContent =
+    `This page is newer than the server it is talking to (needs API v${REQUIRED_API}, ` +
+    `server has v${found}). Restart the server to pick up the new endpoints — ` +
+    `until then some buttons will not work.`;
+  document.body.prepend(bar);
+}
+
 (async function loadSystem() {
   try {
     const s = await api("/api/system");
+    if ((s.api_version || 0) < REQUIRED_API) staleServerBanner(s.api_version || 0);
     const h = s.hardware;
     $("hw").textContent =
       `${h.performance_cores}P + ${h.efficiency_cores}E cores · ${h.memory_gb} GB · ` +
@@ -677,7 +697,10 @@ async function refreshPending() {
       : "Nothing to trash";
   } catch (e) {
     sum.innerHTML = "";
-    note.textContent = e.message;
+    note.textContent = /not found/i.test(e.message)
+      ? "This server does not have the review-and-commit endpoints — it was " +
+        "started before they existed. Restart it and reload this page."
+      : e.message;
     $("commitbtn").disabled = true;
   }
 

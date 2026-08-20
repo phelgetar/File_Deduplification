@@ -252,6 +252,29 @@ class JobRegistry:
         # parent's imported state — notably any inherited DB handles.
         self._ctx = mp.get_context("spawn")
         JOBS_DIR.mkdir(parents=True, exist_ok=True)
+        self._load_from_disk()
+
+    def _load_from_disk(self) -> None:
+        """Rebuild the job list from what previous runs left on disk.
+
+        The plans, duplicate groups and results were always written to
+        .workbench/jobs/<id>/ and survive a restart — but the registry
+        was memory-only, so restarting emptied the Jobs tab and made
+        finished work look lost. Reading the directory back means a
+        completed plan can still be reviewed and executed days later.
+        """
+        for job_dir in sorted(JOBS_DIR.glob("*"), key=lambda d: -d.stat().st_mtime):
+            if not job_dir.is_dir():
+                continue
+            try:
+                job = _job_from_disk(job_dir)
+            except Exception as e:
+                logger.debug("Skipping unreadable job dir %s: %s", job_dir.name, e)
+                continue
+            if job is not None:
+                self._jobs[job.id] = job
+        if self._jobs:
+            logger.info("Recovered %d job(s) from %s", len(self._jobs), JOBS_DIR)
 
     def get(self, job_id: str) -> Optional[Job]:
         with self._lock:
@@ -265,6 +288,7 @@ class JobRegistry:
     def start(self, kind: str, config: dict) -> Job:
         job = Job(id=uuid.uuid4().hex[:12], kind=kind, config=config)
         job.dir.mkdir(parents=True, exist_ok=True)
+        _write_manifest(job)
 
         job._queue = self._ctx.Queue(maxsize=10_000)
         job._cancel = self._ctx.Event()
@@ -367,6 +391,72 @@ class JobRegistry:
                     job._process.terminate()
 
 
+# ------------------------- persistence on disk -------------------------
+#
+# A job's artifacts (plan.jsonl, duplicates.jsonl, result.json) were
+# always written here; only the index of them lived in memory. The
+# manifest adds the bit that was missing — what the job was for — so the
+# Jobs tab can be rebuilt after a restart instead of coming back empty.
+
+MANIFEST = "job.json"
+
+
+def _write_manifest(job: "Job") -> None:
+    try:
+        (job.dir / MANIFEST).write_text(json.dumps({
+            "id": job.id, "kind": job.kind, "config": job.config,
+            "created_at": job.created_at,
+        }, indent=2, default=str))
+    except OSError as e:
+        # Losing the manifest costs history, not correctness.
+        logger.warning("Could not write job manifest for %s: %s", job.id, e)
+
+
+def _job_from_disk(job_dir: Path) -> Optional["Job"]:
+    """Reconstruct one job from its directory, or None if there is nothing."""
+    manifest_path = job_dir / MANIFEST
+    result_path = job_dir / "result.json"
+    plan_path = job_dir / "plan.jsonl"
+
+    if not any(p.exists() for p in (manifest_path, result_path, plan_path)):
+        return None
+
+    manifest = {}
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+
+    config = manifest.get("config", {})
+    if not config.get("source") and plan_path.exists():
+        # Jobs from before manifests existed: recover a usable label from
+        # the plan itself rather than showing a blank row.
+        with plan_path.open(encoding="utf-8") as fh:
+            first = fh.readline()
+        if first:
+            try:
+                config = {**config,
+                          "source": str(Path(json.loads(first)["src"]).parent),
+                          "recovered": True}
+            except (ValueError, KeyError):
+                pass
+
+    job = Job(id=manifest.get("id", job_dir.name),
+              kind=manifest.get("kind", "scan"),
+              config=config,
+              created_at=manifest.get("created_at", job_dir.stat().st_mtime))
+
+    if result_path.exists():
+        job.result = json.loads(result_path.read_text())
+        job.status = CANCELLED if job.result.get("cancelled") else DONE
+        job.finished_at = result_path.stat().st_mtime
+    else:
+        # A manifest with no result means the process was killed mid-run;
+        # it cannot still be running, because it died with the server.
+        job.status = ERROR
+        job.error = "interrupted — the server stopped before this run finished"
+        job.finished_at = job_dir.stat().st_mtime
+
+    return job
+
 registry = JobRegistry()
 
 # Backstop for exits that never reach FastAPI's shutdown hook (Ctrl-C,
@@ -374,3 +464,4 @@ registry = JobRegistry()
 # covers that case.
 import atexit
 atexit.register(registry.shutdown)
+

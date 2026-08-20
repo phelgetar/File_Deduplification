@@ -392,7 +392,17 @@ def _deletion_candidates(only: Optional[list] = None) -> dict:
 
     delete_paths, protected, total_bytes, groups = [], [], 0, 0
 
+    # Zero-byte files all share this hash, so a single resolved group can
+    # hold six figures of them. Deleting them frees nothing and breaks
+    # marker files, so they are refused here as well as in the detector —
+    # a resolution saved before that rule existed must not act on them.
+    EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    skipped_empty = 0
+
     for hash_val, kept in resolutions.items():
+        if hash_val == EMPTY_SHA256:
+            skipped_empty += len(by_hash.get(hash_val, []))
+            continue
         members = by_hash.get(hash_val, [])
         if len(members) < 2:
             continue
@@ -430,7 +440,8 @@ def _deletion_candidates(only: Optional[list] = None) -> dict:
             total_bytes += sizes.get(path, 0)
 
     return {"groups": groups, "files": len(delete_paths), "bytes": total_bytes,
-            "paths": delete_paths, "protected": protected, "missing": missing}
+            "paths": delete_paths, "protected": protected, "missing": missing,
+            "skipped_empty": skipped_empty}
 
 
 @router.get("/pending")
@@ -445,6 +456,7 @@ def api_pending():
         "protected": summary["protected"][:200],
         "protected_total": len(summary["protected"]),
         "missing": summary["missing"],
+        "skipped_empty": summary.get("skipped_empty", 0),
         "already_trashed": count_trashed(),
         "sample": summary["paths"][:20],
     }

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🛡️ Safety
+- 🐛 **FIX**: Zero-byte files were all grouped as one duplicate set. Every empty file hashes to `e3b0c442…` (SHA-256 of the empty string), so this project's own inventory had a single "duplicate group" of **149,296 members** — and it had been resolved, meaning one click on Review-and-trash would have moved 149,295 files to the Trash to reclaim **0 bytes**, taking `.localized`, empty `__init__.py`, `.gitkeep` and other marker files with them. Emptiness is usually the point of such a file, so byte-identity is not evidence of redundancy: zero-byte files are now excluded from duplicate grouping outright, in the detector and again in the delete path so a resolution saved earlier cannot act on them.
+- ⚡ This also fixes the review-and-commit summary, which had to stat 149,785 candidate paths over SMB and never returned. It now answers in **3.0s**.
+
+### 🗂️ Job history
+- ✨ **NEW**: The Jobs tab survives a restart. Plans, duplicate groups and results were always written to `.workbench/jobs/<id>/`, but the index of them lived only in memory, so restarting the server emptied the list and made completed work look lost. A `job.json` manifest is now written when a run starts, and the registry rebuilds itself from disk — including jobs from before manifests existed, whose source is recovered from the plan. A run interrupted by the restart is shown as interrupted rather than silently missing.
+- ✨ **NEW**: `api_version` handshake. `index.html` and `app.js` are read from disk on every request, so a server left running across an update serves a new UI against old routes — the only symptom being a bare 404 ("Not Found" under a greyed-out button). The page now compares versions and says plainly that the server needs restarting.
+
 ### 🗂️ Organizer rules
 - ✨ **NEW**: `group_by_category` per semantic context in `config/semantic_paths.yaml`. Contexts previously overrode file type outright, so a photo on the Desktop was planned as `Desktop/100JVCSO/PIC_0065.JPG` and its category existed only in the database. Location-style contexts (Desktop, Work, Education, Personal, Hobbies) now file by category first — `Media/Images/Desktop/100JVCSO/PIC_0065.JPG`, `Docs/Word/Desktop/canadytw_12192006.doc` — while record sets (`Personal - Disability/VA`, `Personal/Family`) keep `group_by_category: false` so a DICOM series and its cover letter are not split across `Media/Images` and `Docs`. Set per context; the flag defaults to true.
 
