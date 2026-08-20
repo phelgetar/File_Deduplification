@@ -150,6 +150,7 @@ def main():
     parser.add_argument("--file-types", type=str, help="Filter by file type groups (e.g., 'images', 'media', 'docs', 'word_docs'). Use comma for multiple: 'images,videos'")
     parser.add_argument("--list-file-types", action="store_true", help="List all available file type groups and exit")
     parser.add_argument("--no-auto-mount", action="store_true", help="Do not attempt to mount missing network volumes; fail instead. The check that they ARE mounted still runs")
+    parser.add_argument("--no-record", action="store_true", help="Do not record this run under .workbench/jobs/. By default every run is recorded so it appears in the web UI's Jobs tab and its plan stays reviewable")
     parser.add_argument("--show-mounts", action="store_true", help="Show whether the required network volumes are mounted, and exit")
     parser.add_argument("--show-parallelism", action="store_true", help="Show how each stage will be parallelised on this machine, and exit")
     args = parser.parse_args()
@@ -283,6 +284,20 @@ def main():
         execute=False,
     )
 
+    # Record the run the same way the web UI does, so a terminal run
+    # shows up in the Jobs tab and its plan can be reviewed — or executed
+    # — later. The manifest is written first: a run killed part-way then
+    # still leaves evidence it happened.
+    job_id = None
+    if not args.no_record:
+        from core import artifacts
+        job_id = artifacts.new_job_id()
+        artifacts.write_manifest(job_id, "scan", {
+            "source": str(source_path), "base_dir": str(base_dir_path),
+            "use_db": args.use_db, "max_files": args.max_files,
+            "file_types": args.file_types, "via": "cli",
+        })
+
     try:
         result, plan = run_pipeline(config, progress=_console_progress)
     except KeyboardInterrupt:
@@ -293,6 +308,15 @@ def main():
     except RuntimeError as e:
         logging.error(f"❌ {e}")
         sys.exit(1)
+
+    if job_id:
+        from core import artifacts
+        try:
+            directory = artifacts.record_run(job_id, "scan", config.__dict__, result, plan)
+            print(f"\n📁 Run recorded as {job_id} — open it in the Jobs tab, "
+                  f"or find it at {directory}")
+        except OSError as e:
+            logging.warning(f"Could not record this run: {e}")
 
     print("\n🧪 Previewing changes...\n")
     preview_plan(plan)

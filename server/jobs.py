@@ -53,7 +53,8 @@ logger = logging.getLogger(__name__)
 
 # Where per-job artifacts live. Beside the repo rather than in /tmp so a
 # plan survives a reboot and can still be reviewed and executed.
-JOBS_DIR = Path(__file__).resolve().parent.parent / ".workbench" / "jobs"
+from core.artifacts import (JOBS_DIR, MANIFEST, write_duplicates,
+                            write_manifest, write_plan, write_result)
 
 # Events kept per job for SSE replay. Progress events are already
 # throttled to ~4/s by core.pipeline.Progress, so this is a generous
@@ -68,52 +69,6 @@ TERMINAL = {DONE, ERROR, CANCELLED}
 #
 # Everything below runs in the child. It must be importable at module
 # level (spawn re-imports this file) and must not touch parent state.
-
-
-def _write_plan(job_dir: Path, plan) -> None:
-    """Persist the plan as JSONL so the UI can page it without loading it all."""
-    with (job_dir / "plan.jsonl").open("w", encoding="utf-8") as fh:
-        for file_info, dest in plan:
-            fh.write(json.dumps({
-                "src": str(file_info.path),
-                "dest": str(dest),
-                "type": file_info.type,
-                "size": file_info.size,
-                "hash": file_info.hash,
-                "is_duplicate": bool(file_info.is_duplicate),
-                "duplicate_of": str(file_info.original_path) if file_info.original_path else None,
-            }) + "\n")
-
-
-def _write_duplicates(job_dir: Path, plan) -> None:
-    """Group duplicates by hash, largest reclaim first.
-
-    Written from the plan rather than recomputed so the review screen and
-    the execution both see the same set.
-    """
-    groups: Dict[str, dict] = {}
-    for file_info, _dest in plan:
-        if not file_info.hash or file_info.hash == "METADATA_ONLY":
-            continue
-        g = groups.setdefault(file_info.hash, {
-            "hash": file_info.hash, "size": file_info.size or 0, "paths": [],
-        })
-        g["paths"].append({"path": str(file_info.path),
-                           "is_duplicate": bool(file_info.is_duplicate)})
-
-    rows = []
-    for g in groups.values():
-        if len(g["paths"]) < 2:
-            continue
-        g["count"] = len(g["paths"])
-        # Keeping one copy is the point, so the reclaim is n-1 copies.
-        g["reclaimable"] = g["size"] * (g["count"] - 1)
-        rows.append(g)
-    rows.sort(key=lambda r: -r["reclaimable"])
-
-    with (job_dir / "duplicates.jsonl").open("w", encoding="utf-8") as fh:
-        for row in rows:
-            fh.write(json.dumps(row) + "\n")
 
 
 def _watch_parent(cancel_event, poll: float = 2.0) -> None:
@@ -174,9 +129,9 @@ def _child_main(kind: str, config_dict: dict, job_dir_str: str,
         config = PipelineConfig(**config_dict)
         result, plan = run_pipeline(config, progress=emit, cancel=cancelled)
 
-        _write_plan(job_dir, plan)
-        _write_duplicates(job_dir, plan)
-        (job_dir / "result.json").write_text(json.dumps(result.as_dict(), indent=2))
+        write_plan(job_dir, plan)
+        write_duplicates(job_dir, plan)
+        write_result(job_dir, result.as_dict())
 
         emit({"type": "cancelled" if result.cancelled else "done",
               "result": result.as_dict()})
@@ -288,7 +243,7 @@ class JobRegistry:
     def start(self, kind: str, config: dict) -> Job:
         job = Job(id=uuid.uuid4().hex[:12], kind=kind, config=config)
         job.dir.mkdir(parents=True, exist_ok=True)
-        _write_manifest(job)
+        write_manifest(job.id, job.kind, job.config, job.created_at)
 
         job._queue = self._ctx.Queue(maxsize=10_000)
         job._cancel = self._ctx.Event()
@@ -398,18 +353,6 @@ class JobRegistry:
 # manifest adds the bit that was missing — what the job was for — so the
 # Jobs tab can be rebuilt after a restart instead of coming back empty.
 
-MANIFEST = "job.json"
-
-
-def _write_manifest(job: "Job") -> None:
-    try:
-        (job.dir / MANIFEST).write_text(json.dumps({
-            "id": job.id, "kind": job.kind, "config": job.config,
-            "created_at": job.created_at,
-        }, indent=2, default=str))
-    except OSError as e:
-        # Losing the manifest costs history, not correctness.
-        logger.warning("Could not write job manifest for %s: %s", job.id, e)
 
 
 def _job_from_disk(job_dir: Path) -> Optional["Job"]:

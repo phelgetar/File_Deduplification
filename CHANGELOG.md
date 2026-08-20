@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ⚡ This also fixes the review-and-commit summary, which had to stat 149,785 candidate paths over SMB and never returned. It now answers in **3.0s**.
 
 ### 🗂️ Job history
+- ✨ **NEW**: Command-line runs are recorded too, so they appear in the web UI's Jobs tab alongside runs started there — the plan stays browsable and can be executed from the UI later. Both entry points now write the same artifacts via `core/artifacts.py`; previously only the server did, and `--dry-run-log` wrote `str(tuple)` Python reprs that could not be read back. Disable with `--no-record`.
 - ✨ **NEW**: The Jobs tab survives a restart. Plans, duplicate groups and results were always written to `.workbench/jobs/<id>/`, but the index of them lived only in memory, so restarting the server emptied the list and made completed work look lost. A `job.json` manifest is now written when a run starts, and the registry rebuilds itself from disk — including jobs from before manifests existed, whose source is recovered from the plan. A run interrupted by the restart is shown as interrupted rather than silently missing.
 - ✨ **NEW**: `api_version` handshake. `index.html` and `app.js` are read from disk on every request, so a server left running across an update serves a new UI against old routes — the only symptom being a bare 404 ("Not Found" under a greyed-out button). The page now compares versions and says plainly that the server needs restarting.
 
