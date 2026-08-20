@@ -149,10 +149,18 @@ def main():
     parser.add_argument("--cloud-model", type=str, help="Model for --cloud-classify (default: claude-opus-5; also honours the CLOUD_MODEL env var)")
     parser.add_argument("--file-types", type=str, help="Filter by file type groups (e.g., 'images', 'media', 'docs', 'word_docs'). Use comma for multiple: 'images,videos'")
     parser.add_argument("--list-file-types", action="store_true", help="List all available file type groups and exit")
+    parser.add_argument("--no-auto-mount", action="store_true", help="Do not attempt to mount missing network volumes; fail instead. The check that they ARE mounted still runs")
+    parser.add_argument("--show-mounts", action="store_true", help="Show whether the required network volumes are mounted, and exit")
     parser.add_argument("--show-parallelism", action="store_true", help="Show how each stage will be parallelised on this machine, and exit")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
+
+    if args.show_mounts:
+        from utils import mounts
+        print("Required volumes:\n")
+        print(mounts.describe())
+        sys.exit(0)
 
     if args.show_parallelism:
         from core import parallel
@@ -192,6 +200,20 @@ def main():
         except ValueError as e:
             logging.error(f"❌ {e}")
             sys.exit(1)
+
+    # Mount preflight. This runs before path validation because the
+    # source and destination normally live on these volumes: an
+    # unmounted /Volumes/home is an empty directory, so a scan would
+    # "succeed" over nothing, and --execute would write to the boot disk.
+    from utils import mounts
+    mount_problems = mounts.ensure_mounts(auto_mount=not args.no_auto_mount)
+    if mount_problems:
+        for problem in mount_problems:
+            logging.error(f"❌ {problem}")
+        logging.error("   Refusing to run: the volumes this scan needs are "
+                      "not available. Mount them in Finder and re-run, or "
+                      "pass --show-mounts to see the current state.")
+        sys.exit(1)
 
     # Input validation
     source_path = Path(args.source).resolve()

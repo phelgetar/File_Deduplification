@@ -272,6 +272,20 @@ def run_pipeline(
     result = PipelineResult()
     cancelled = lambda: bool(cancel and cancel())
 
+    # A path under /Volumes that is not actually mounted is an empty
+    # directory, not an error: scanning it "succeeds" over nothing, and
+    # executing into it fills the boot disk instead of the volume. This
+    # check is offline and cheap, so every caller gets it — the CLI also
+    # tries to mount first (see utils/mounts.ensure_mounts).
+    from utils.mounts import unmounted_volume_for
+    for label, candidate in (("source", config.source), ("destination", config.base_dir)):
+        missing = unmounted_volume_for(candidate)
+        if missing:
+            raise RuntimeError(
+                f"The {label} is on {missing}, which is not mounted. "
+                f"Mount it and re-run — continuing would "
+                f"{'scan an empty directory' if label == 'source' else 'write to the local disk'}.")
+
     if config.use_db:
         from core.db import init_db
         init_db()

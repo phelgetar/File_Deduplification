@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔌 Mount preflight
+- ✨ **NEW**: `utils/mounts.py` — the CLI now verifies `/Volumes/home` and `/Volumes/homes` are mounted before a run, and mounts them from `smb://canome/...` if they are not. Mounting goes through `osascript ... mount volume`, so it uses the login Keychain: no credential is read, stored, or logged by this project, and no `sudo` is required.
+- ✨ **NEW**: A path under `/Volumes` that is *not* a mount point now aborts the run, from the CLI and the web UI alike. This is the failure worth guarding: an unmounted `/Volumes/home` is an ordinary empty directory, so a scan "succeeds" over nothing and — with `--use-db` — records a volume that appears to have lost every file. With `--execute` it is worse, because the destination also resolves locally and files are copied onto the boot disk. The check is `os.path.ismount()`, not `path.exists()`.
+- ✨ **NEW**: `--show-mounts` prints the state of each required volume; `--no-auto-mount` checks without mounting; `WORKBENCH_MOUNT_HOST`, `WORKBENCH_MOUNT_SCHEME` and `WORKBENCH_NO_AUTOMOUNT` override the defaults without editing code.
+- 🔧 Mount failures are reported with the OSStatus code translated into what to check — `-5016` (server unreachable or wrong share name) and `-128` (no saved Keychain credentials) being the two that actually occur.
+
 ### 🗂️ Organizer rules
 - 🐛 **FIX**: The general planning branch discarded each file's directory structure and kept only the filename, so every file of a category resolved into one folder. Same-named files then collided and the executor skipped all but the first — a controlled test put 9 photos from 3 albums in and got 3 files out. It now preserves the path under the category folder, matching what the backup/web/code/application branches already did. This branch handles **1,849,594** classified files, including 1,086,984 in `data` and 275,287 in `image`.
 - 🐛 **FIX**: `/personal/` was a pattern of both the priority-100 "Personal - Disability/VA" context and the priority-80 "Personal" context. Contexts are sorted by priority and the first match returns, so the priority-80 rule was unreachable and every personal file — tax returns, family photos — was filed as medical. Also dropped `/va/`: two letters between slashes matches far more than VA records.
