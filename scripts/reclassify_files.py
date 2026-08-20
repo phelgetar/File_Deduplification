@@ -32,6 +32,10 @@ from core.db import Session, File, Classification, save_classification
 from core.classifier import classify_file
 from models.file_info import FileInfo
 
+# Categories that mean "unclassified". Moving a file INTO one of these
+# from something specific is a loss, not a reclassification.
+DOWNGRADE_TARGETS = {"other", "unknown", None, ""}
+
 # Load environment variables
 load_dotenv()
 
@@ -40,7 +44,8 @@ def reclassify_files(
     all_files=False,
     dry_run=False,
     verbose=False,
-    skip_cloud=False
+    skip_cloud=False,
+    allow_downgrade=False
 ):
     """
     Reclassify existing files in the database.
@@ -51,6 +56,8 @@ def reclassify_files(
         dry_run: If True, show what would be changed without updating database
         verbose: If True, show detailed progress
         skip_cloud: If True, skip files in cloud storage directories (Google Drive, Dropbox, etc.)
+        allow_downgrade: If True, permit a specific category to be replaced by
+            'other'/'unknown'. Off by default — see DOWNGRADE_TARGETS.
     """
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
@@ -66,7 +73,8 @@ def reclassify_files(
         'files_missing': 0,
         'files_skipped': 0,
         'files_error': 0,
-        'category_changes': defaultdict(lambda: defaultdict(int))
+        'category_changes': defaultdict(lambda: defaultdict(int)),
+        'downgrades_skipped': defaultdict(lambda: defaultdict(int))
     }
 
     # Cloud storage paths to skip if skip_cloud is True
@@ -148,6 +156,20 @@ def reclassify_files(
                 classified_file = classify_file(file_info, use_db=False)
                 new_category = classified_file.type
 
+                # Never trade a specific answer for "no idea". Files
+                # classified by an older ruleset — extensionless AUTHORS
+                # and COPYING, legacy .wpd/.wk4/.123 — fall through
+                # today's extension checks to "other", so a reclassify
+                # pass would quietly downgrade 3,624 documents to
+                # unclassified. Improving a category is the point;
+                # losing one is not.
+                if (new_category in DOWNGRADE_TARGETS
+                        and old_category not in DOWNGRADE_TARGETS
+                        and not allow_downgrade):
+                    stats['files_kept'] = stats.get('files_kept', 0) + 1
+                    stats['downgrades_skipped'][old_category][new_category] += 1
+                    continue
+
                 # Check if category changed
                 if new_category != old_category:
                     stats['files_updated'] += 1
@@ -225,6 +247,14 @@ def print_summary(stats, dry_run):
             for new_cat, count in sorted(new_cats.items(), key=lambda x: x[1], reverse=True):
                 print(f"    → {new_cat}: {count:,} files")
 
+    kept = stats.get('files_kept', 0)
+    if kept:
+        print(f"\n🛡️  KEPT (would have become unclassified): {kept:,}")
+        for old, targets in stats['downgrades_skipped'].items():
+            for new, n in targets.items():
+                print(f"    {old} → {new}: {n:,} files left as '{old}'")
+        print("    Pass --allow-downgrade to apply these anyway.")
+
     if dry_run and stats['files_updated'] > 0:
         print(f"\n💡 This was a DRY RUN. Run without --dry-run to apply changes.")
 
@@ -270,6 +300,12 @@ Examples:
     )
 
     parser.add_argument(
+        '--allow-downgrade',
+        action='store_true',
+        help='Permit a specific category to be replaced by "other". Off by '
+             'default, so a reclassify never loses information'
+    )
+    parser.add_argument(
         '--dry-run',
         action='store_true',
         help='Show what would change without updating database'
@@ -304,6 +340,7 @@ Examples:
             categories_to_update=args.categories if not args.all else None,
             all_files=args.all,
             dry_run=args.dry_run,
+            allow_downgrade=args.allow_downgrade,
             verbose=args.verbose,
             skip_cloud=args.skip_cloud
         )
