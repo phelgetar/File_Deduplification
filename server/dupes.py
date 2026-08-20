@@ -33,7 +33,9 @@ from __future__ import annotations
 
 import logging
 import threading
+import os
 import time
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -334,3 +336,195 @@ def api_files(prefix: str = DEFAULT_PREFIX, after: Optional[str] = None,
         } for r in page],
         "next_after": page[-1].path if len(rows) > limit else None,
     }
+
+
+# ----------------------------- deletion -----------------------------
+#
+# The only destructive surface in the project. Three rules hold:
+#   - files are moved to the Trash, never unlinked;
+#   - a group must be resolved first, and its kept copies are never
+#     touched, so a group can never lose its last copy;
+#   - protected companions (utils/protected.py) are excluded even when
+#     hash-identical, because the media beside them still needs them.
+
+class DeleteRequest(BaseModel):
+    confirm: str                 # must equal "TRASH THEM"
+    hashes: Optional[list] = None   # None = every resolved group
+
+
+def _deletion_candidates(only: Optional[list] = None) -> dict:
+    """What a delete would trash, without touching anything.
+
+    Drives both the confirmation screen and the deletion itself, so the
+    numbers shown are the numbers acted on.
+
+    One query for every group, not one per group: `files.hash` is
+    unindexed, so a per-group lookup is a full table scan each time —
+    148 resolved groups took the endpoint past two minutes before this
+    was batched. See migration 004, which indexes the column.
+    """
+    from core.db import get_duplicate_resolutions
+    from utils.protected import protection_reason
+
+    resolutions = get_duplicate_resolutions() or {}
+    if only:
+        wanted = set(only)
+        resolutions = {h: k for h, k in resolutions.items() if h in wanted}
+    empty = {"groups": 0, "files": 0, "bytes": 0, "paths": [],
+             "protected": [], "missing": 0}
+    if not resolutions:
+        return empty
+
+    # Fetch every group's members in one pass.
+    by_hash: dict = {}
+    hashes = list(resolutions)
+    with _session() as s:
+        s.execute(text("SET SESSION max_execution_time = 900000"))
+        for i in range(0, len(hashes), 500):
+            chunk = hashes[i:i + 500]
+            placeholders = ", ".join(f":h{n}" for n in range(len(chunk)))
+            params = {f"h{n}": h for n, h in enumerate(chunk)}
+            rows = s.execute(text(
+                f"SELECT hash, path, size FROM files WHERE hash IN ({placeholders})"),
+                params).all()
+            for r in rows:
+                by_hash.setdefault(r.hash, []).append((r.path, int(r.size or 0)))
+
+    delete_paths, protected, total_bytes, groups = [], [], 0, 0
+
+    for hash_val, kept in resolutions.items():
+        members = by_hash.get(hash_val, [])
+        if len(members) < 2:
+            continue
+        kept_set = {str(k) for k in kept}
+        # Never empty a group: if not one kept copy is actually present in
+        # this hash group, leave the whole group alone.
+        if not any(path in kept_set for path, _ in members):
+            continue
+
+        candidates = [(path, size) for path, size in members if path not in kept_set]
+        if not candidates:
+            continue
+        groups += 1
+        for path, size in candidates:
+            reason = protection_reason(path)
+            if reason:
+                protected.append({"path": path, "reason": reason})
+                continue
+            delete_paths.append(path)
+            total_bytes += size
+
+    # Existence is checked in parallel: these live on a network volume,
+    # where a serial stat per file dominates everything else.
+    missing = 0
+    if delete_paths:
+        from core import parallel
+        present = list(parallel.map_stage(
+            parallel.SCAN, os.path.exists, delete_paths))
+        missing = sum(1 for ok in present if not ok)
+        delete_paths = [p for p, ok in zip(delete_paths, present) if ok]
+        # total_bytes still counts only what we will actually try to move
+        total_bytes = 0
+        sizes = {path: size for members in by_hash.values() for path, size in members}
+        for path in delete_paths:
+            total_bytes += sizes.get(path, 0)
+
+    return {"groups": groups, "files": len(delete_paths), "bytes": total_bytes,
+            "paths": delete_paths, "protected": protected, "missing": missing}
+
+
+@router.get("/pending")
+def api_pending():
+    """Final-confirmation summary: what would be trashed, and what won't."""
+    summary = _deletion_candidates()
+    from core.db import count_trashed
+    return {
+        "groups": summary["groups"],
+        "files": summary["files"],
+        "bytes": summary["bytes"],
+        "protected": summary["protected"][:200],
+        "protected_total": len(summary["protected"]),
+        "missing": summary["missing"],
+        "already_trashed": count_trashed(),
+        "sample": summary["paths"][:20],
+    }
+
+
+@router.post("/delete")
+def api_delete(req: DeleteRequest):
+    """Move the non-kept copies of resolved groups to the Trash."""
+    if req.confirm != "TRASH THEM":
+        raise HTTPException(400, 'Confirmation phrase required: "TRASH THEM".')
+
+    from core.db import is_db_down, log_deletions_bulk
+    if is_db_down():
+        raise HTTPException(
+            409, "The database is unreachable, so deletions could not be "
+                 "logged — and an unlogged deletion cannot be undone. "
+                 "Restore it and retry.")
+
+    summary = _deletion_candidates(req.hashes)
+    if not summary["paths"]:
+        return {"trashed": 0, "failed": 0, "bytes": 0,
+                "message": "Nothing to trash — no resolved group had a "
+                           "deletable copy."}
+
+    from datetime import datetime
+    from utils.trash import trash_many
+
+    batch_at = datetime.utcnow()
+    results = trash_many(summary["paths"])
+    ok = [r for r in results if r.ok]
+    failed = [{"path": r.path, "error": r.error} for r in results if not r.ok]
+
+    logged = log_deletions_bulk([(r.path, r.trashed_to) for r in ok], batch_at)
+    if ok and not logged:
+        logger.error("Trashed %d files but logged 0 — undo will not see them", len(ok))
+
+    return {
+        "trashed": len(ok),
+        "failed": len(failed),
+        "failures": failed[:20],
+        "bytes": summary["bytes"],
+        "logged": logged,
+        "protected_skipped": len(summary["protected"]),
+        "batch_at": batch_at.isoformat(),
+    }
+
+
+@router.get("/undo")
+def api_undo_preview():
+    """What the undo button would put back."""
+    from core.db import last_deletion_batch
+    batch = last_deletion_batch()
+    if not batch:
+        return {"available": False}
+    return {
+        "available": True,
+        "at": batch["at"].isoformat() if batch["at"] else None,
+        "files": len(batch["items"]),
+        "sample": [i["original"] for i in batch["items"][:10]],
+    }
+
+
+@router.post("/undo")
+def api_undo():
+    """Put the most recent trashed batch back where it came from."""
+    from core.db import last_deletion_batch, mark_deletions_restored
+    from utils.trash import restore
+
+    batch = last_deletion_batch()
+    if not batch:
+        raise HTTPException(404, "Nothing to undo.")
+
+    restored_ids, failures = [], []
+    for item in batch["items"]:
+        problem = restore(item["trash"], item["original"])
+        if problem is None:
+            restored_ids.append(item["operation_id"])
+        else:
+            failures.append({"path": item["original"], "error": problem})
+
+    mark_deletions_restored(restored_ids)
+    return {"restored": len(restored_ids), "failed": len(failures),
+            "failures": failures[:20]}

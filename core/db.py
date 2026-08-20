@@ -590,3 +590,101 @@ def save_file_tags_bulk(rows, tag_source='ai_tagger', confidence=1.0):
                 inserted += len(new_rows)
             session.commit()
     return inserted
+
+
+# --- Deletion log (Trash) and undo ---
+#
+# Trashing is recorded in `operations` with action='DELETE':
+#   file_id      the file that was trashed (its path is in `files`)
+#   target_path  where in the Trash it landed
+#   executed_at  identical across one batch — this is the batch key
+#   executed     1 while trashed, 0 once restored
+#
+# Grouping by executed_at avoids a schema change, and flipping `executed`
+# on restore keeps the audit trail instead of deleting history.
+
+@_db_guard(default=0)
+def log_deletions_bulk(rows, batch_at=None):
+    """Record a batch of trashed files. rows: (original_path, trash_path)."""
+    rows = [r for r in rows if r]
+    if not rows:
+        return 0
+    batch_at = batch_at or datetime.utcnow()
+
+    written = 0
+    with Session() as session:
+        for chunk in _chunks(rows):
+            by_path = {str(orig): trash for orig, trash in chunk}
+            id_rows = session.query(File.id, File.path).filter(
+                File.path.in_(list(by_path))).all()
+            path_to_id = {path: fid for fid, path in id_rows}
+
+            new_rows = [{
+                "file_id": path_to_id[path],
+                "action": "DELETE",
+                "target_path": trash,
+                "executed": True,
+                "executed_at": batch_at,
+            } for path, trash in by_path.items() if path in path_to_id]
+
+            if new_rows:
+                session.bulk_insert_mappings(Operation, new_rows)
+                written += len(new_rows)
+            session.commit()
+    return written
+
+
+@_db_guard(default=None)
+def last_deletion_batch():
+    """The most recent batch still in the Trash.
+
+    Returns {"at": datetime, "items": [{"original","trash","file_id"}]} or
+    None when there is nothing left to undo.
+    """
+    with Session() as session:
+        latest = (session.query(Operation.executed_at)
+                  .filter(Operation.action == "DELETE",
+                          Operation.executed.is_(True))
+                  .order_by(Operation.executed_at.desc())
+                  .first())
+        if not latest or latest[0] is None:
+            return None
+        at = latest[0]
+
+        rows = (session.query(Operation.id, Operation.file_id,
+                              Operation.target_path, File.path)
+                .join(File, File.id == Operation.file_id)
+                .filter(Operation.action == "DELETE",
+                        Operation.executed.is_(True),
+                        Operation.executed_at == at)
+                .all())
+        return {
+            "at": at,
+            "items": [{"operation_id": oid, "file_id": fid,
+                       "trash": target, "original": original}
+                      for oid, fid, target, original in rows],
+        }
+
+
+@_db_guard(default=0)
+def mark_deletions_restored(operation_ids):
+    """Flag operations as undone so the batch is no longer restorable."""
+    operation_ids = list(operation_ids)
+    if not operation_ids:
+        return 0
+    with Session() as session:
+        n = (session.query(Operation)
+             .filter(Operation.id.in_(operation_ids))
+             .update({Operation.executed: False}, synchronize_session=False))
+        session.commit()
+        return n
+
+
+@_db_guard(default=0)
+def count_trashed():
+    """How many files are currently sitting in the Trash from this tool."""
+    with Session() as session:
+        return (session.query(Operation)
+                .filter(Operation.action == "DELETE",
+                        Operation.executed.is_(True))
+                .count())

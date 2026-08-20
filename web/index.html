@@ -212,7 +212,9 @@ button.browse { background: var(--panel-2); border: 1px solid var(--border);
       <h2>Duplicate groups</h2>
       <div class="row" style="margin-bottom:10px">
         <span class="dim">Tick the copies to keep (one or more), then save —
-          the group is settled and stops appearing here and in future runs.</span>
+          the group is settled and stops appearing here and in future runs.
+          Saving records a decision; nothing is deleted until you review and
+          commit below.</span>
         <span style="flex:1"></span>
         <label style="margin:0"><input type="checkbox" id="dupeshowresolved">
           Show resolved</label>
@@ -223,6 +225,18 @@ button.browse { background: var(--panel-2); border: 1px solid var(--border);
         <tbody><tr><td colspan="5"><div class="empty">Run a scan first.</div></td></tr></tbody>
       </table></div>
       <div class="pager" id="dupepager"></div>
+    </div>
+
+    <div class="card">
+      <h2>Review and commit</h2>
+      <div id="pendingsum" class="stats" style="margin-bottom:12px"></div>
+      <p class="dim" id="pendingnote" style="margin-top:0"></p>
+      <div id="protectednote"></div>
+      <div class="row">
+        <button class="danger" id="commitbtn" disabled>Review and trash…</button>
+        <button class="ghost" id="undobtn" disabled>Put back last batch</button>
+        <span class="dim" id="undonote"></span>
+      </div>
     </div>
   </section>
 
@@ -318,6 +332,18 @@ button.browse { background: var(--panel-2); border: 1px solid var(--border);
     <span style="flex:1"></span>
     <button class="ghost" id="fscancel">Cancel</button>
     <button class="act" id="fsuse">Use this folder</button>
+  </div>
+</dialog>
+
+<dialog id="trashconfirm">
+  <h2 style="margin-top:0;font-size:15px">Last chance</h2>
+  <p id="trashbody"></p>
+  <p class="dim" id="trashprotected"></p>
+  <p>Type <b>TRASH THEM</b> to confirm:</p>
+  <input type="text" id="trashtext" spellcheck="false" autocomplete="off">
+  <div class="row" style="margin-top:16px;justify-content:flex-end">
+    <button class="ghost" id="trashno">Cancel</button>
+    <button class="danger" id="trashyes" disabled>Move to Trash</button>
   </div>
 </dialog>
 

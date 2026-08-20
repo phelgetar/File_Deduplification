@@ -55,7 +55,7 @@ document.querySelectorAll("nav button").forEach((btn) => {
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("on"));
     btn.classList.add("on");
     $("view-" + btn.dataset.view).classList.add("on");
-    if (btn.dataset.view === "dupes") loadDuplicates();
+    if (btn.dataset.view === "dupes") { loadDuplicates(); refreshPending(); }
     if (btn.dataset.view === "tree" && !state.treeLoaded) loadTree();
     if (btn.dataset.view === "plan") loadPlan();
     if (btn.dataset.view === "jobs") loadJobs();
@@ -639,3 +639,105 @@ async function loadJobs() {
 }
 
 loadJobs();
+
+// ─────────────────────── trash, undo, and commit ───────────────────────
+//
+// Saving a duplicate decision never deletes anything. Deletion happens
+// here, once, against every resolved group — and it moves files to the
+// Trash so a mistake is recoverable both from this screen and from Finder.
+
+async function refreshPending() {
+  const sum = $("pendingsum");
+  const note = $("pendingnote");
+  const prot = $("protectednote");
+  try {
+    const p = await api("/api/db/duplicates/pending");
+    sum.innerHTML =
+      `<div class="stat"><b>${num(p.groups)}</b><span>groups decided</span></div>` +
+      `<div class="stat"><b>${num(p.files)}</b><span>copies to trash</span></div>` +
+      `<div class="stat"><b>${bytes(p.bytes)}</b><span>reclaimed</span></div>`;
+
+    const bits = [];
+    if (p.missing) bits.push(`${num(p.missing)} already gone from disk`);
+    if (p.already_trashed) bits.push(`${num(p.already_trashed)} currently in the Trash`);
+    note.textContent = bits.length
+      ? bits.join(" · ")
+      : "Kept copies are never touched, so no group can lose its last copy.";
+
+    prot.innerHTML = p.protected_total
+      ? `<p class="dim">Excluding <b>${num(p.protected_total)}</b> companion ` +
+        `file(s) that a media file still needs — e.g. ` +
+        `<code>${esc((p.protected[0] || {}).path || "")}</code> ` +
+        `(${esc((p.protected[0] || {}).reason || "")}).</p>`
+      : "";
+
+    $("commitbtn").disabled = p.files === 0;
+    $("commitbtn").textContent = p.files
+      ? `Review and trash ${num(p.files)} file${p.files === 1 ? "" : "s"}…`
+      : "Nothing to trash";
+  } catch (e) {
+    sum.innerHTML = "";
+    note.textContent = e.message;
+    $("commitbtn").disabled = true;
+  }
+
+  try {
+    const u = await api("/api/db/duplicates/undo");
+    $("undobtn").disabled = !u.available;
+    $("undonote").textContent = u.available
+      ? `${num(u.files)} file(s) from the last batch can be put back`
+      : "";
+  } catch { $("undobtn").disabled = true; }
+}
+
+const trashDlg = $("trashconfirm");
+
+$("commitbtn").onclick = async () => {
+  const p = await api("/api/db/duplicates/pending");
+  $("trashbody").innerHTML =
+    `About to move <b>${num(p.files)}</b> duplicate file(s) to the Trash, ` +
+    `reclaiming <b>${bytes(p.bytes)}</b> across ${num(p.groups)} group(s).<br><br>` +
+    `The copies you chose to keep are not touched. Nothing is erased — ` +
+    `everything goes to the Trash on its own volume, and this screen can ` +
+    `put the whole batch back.`;
+  $("trashprotected").textContent = p.protected_total
+    ? `${num(p.protected_total)} companion file(s) are excluded and will be left alone.`
+    : "";
+  $("trashtext").value = "";
+  $("trashyes").disabled = true;
+  trashDlg.showModal();
+};
+$("trashtext").oninput = (e) => {
+  $("trashyes").disabled = e.target.value !== "TRASH THEM";
+};
+$("trashno").onclick = () => trashDlg.close();
+$("trashyes").onclick = async () => {
+  trashDlg.close();
+  $("commitbtn").disabled = true;
+  $("commitbtn").textContent = "Moving to Trash…";
+  try {
+    const r = await post("/api/db/duplicates/delete", { confirm: "TRASH THEM" });
+    let msg = `Moved ${num(r.trashed)} file(s) to the Trash, reclaiming ${bytes(r.bytes)}.`;
+    if (r.failed) msg += ` ${num(r.failed)} could not be moved.`;
+    if (r.protected_skipped) msg += ` ${num(r.protected_skipped)} companion file(s) left alone.`;
+    $("pendingnote").textContent = msg;
+  } catch (e) {
+    $("pendingnote").textContent = "Nothing was deleted — " + e.message;
+  }
+  await refreshPending();
+  await loadDuplicates(state.dupeOffset || 0);
+};
+
+$("undobtn").onclick = async () => {
+  $("undobtn").disabled = true;
+  $("undonote").textContent = "Putting files back…";
+  try {
+    const r = await post("/api/db/duplicates/undo");
+    $("undonote").textContent =
+      `Restored ${num(r.restored)} file(s)` +
+      (r.failed ? `, ${num(r.failed)} could not be put back` : "");
+  } catch (e) {
+    $("undonote").textContent = e.message;
+  }
+  await refreshPending();
+};
