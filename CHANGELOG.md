@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🗂️ Organizer rules
+- 🐛 **FIX**: The general planning branch discarded each file's directory structure and kept only the filename, so every file of a category resolved into one folder. Same-named files then collided and the executor skipped all but the first — a controlled test put 9 photos from 3 albums in and got 3 files out. It now preserves the path under the category folder, matching what the backup/web/code/application branches already did. This branch handles **1,849,594** classified files, including 1,086,984 in `data` and 275,287 in `image`.
+- 🐛 **FIX**: `/personal/` was a pattern of both the priority-100 "Personal - Disability/VA" context and the priority-80 "Personal" context. Contexts are sorted by priority and the first match returns, so the priority-80 rule was unreachable and every personal file — tax returns, family photos — was filed as medical. Also dropped `/va/`: two letters between slashes matches far more than VA records.
+- 🔧 **REMOVED**: `config/folder_mappings.yaml`. It read like configuration but was never loaded — `folder_mapping.py` contains no YAML parser, and the live mapping is a hardcoded dict. Its 229 lines of glob patterns (security-camera clips, movies, TV shows) had never matched anything, and it disagreed with the dict that does run.
+
 ### 🐛 Fixes
 - 🐛 **FIX**: Atomic packages (`.app`, `.framework`, bundle-style `.pkg`) never arrived at the destination. The scanner correctly hands them over whole — it does not descend into them — but `execute_plan()` called `shutil.copy2` unconditionally, which raises `IsADirectoryError` on a directory. The bundle was counted as an error and skipped while the run still reported success. Bundles now copy with `shutil.copytree(..., symlinks=True)`; preserving symlinks matters because a `.framework`'s `Versions/Current` is a link, and resolving it both duplicates the payload and produces a bundle that no longer matches the original.
 

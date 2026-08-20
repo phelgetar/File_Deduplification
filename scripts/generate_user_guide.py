@@ -678,7 +678,6 @@ File_Deduplification/
 +-- config/                  # YAML config + folder mapping rules
 |   +-- file_type_groups.yaml
 |   +-- folder_mapping.py
-|   +-- folder_mappings.yaml
 |   +-- image_ai_categories.yaml
 |   +-- semantic_paths.yaml
 +-- core/                    # Application library code

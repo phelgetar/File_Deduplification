@@ -347,7 +347,10 @@ def run_pipeline(
 
     # --- plan ---
     p.stage_start("plan", "Planning folder structure")
-    plan = plan_organization(classified, config.base_dir)
+    # Pass the scanned root so the planner can keep each file's
+    # position inside it rather than flattening by category.
+    plan = plan_organization(classified, config.base_dir,
+                             source_root=config.source)
     result.planned_operations = len(plan)
     p.stage_end(f"{len(plan):,} operations planned")
 

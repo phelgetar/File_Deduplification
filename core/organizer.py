@@ -94,10 +94,27 @@ def organize_files(file_infos: list[FileInfo], base_dir: Path) -> dict:
 
     return plan
 
+def _relative_under_source(file_path: Path, source_root: Optional[Path]) -> Optional[Path]:
+    """The file's path relative to the scanned root, if it sits under it.
+
+    This is what lets the general case keep a file's directory structure
+    instead of collapsing every file of a category into one folder. Two
+    files named IMG_0001.jpg from different albums are different files;
+    flattening them makes the second one unplaceable.
+    """
+    if source_root is None:
+        return None
+    try:
+        return file_path.resolve().relative_to(Path(source_root).resolve())
+    except (ValueError, OSError):
+        return None
+
+
 def plan_organization(
     files: List[FileInfo],
     base_dir: Path,
-    preserve_root_structure: bool = True
+    preserve_root_structure: bool = True,
+    source_root: Optional[Path] = None
 ) -> List[Tuple[FileInfo, Path]]:
     """
     Determines target paths for files based on classification results.
@@ -186,14 +203,20 @@ def plan_organization(
         # Regular file organization with custom folder mapping
         subfolders = []
 
+        # Where the file sits inside the scanned tree. When this is
+        # known we keep it, so this branch behaves like the
+        # structure-preserving ones above rather than flattening.
+        relative = _relative_under_source(file_info.path, source_root)
+
         # Extract root structure folder if preserving
         root_folder = None
         if preserve_root_structure and file_info.path_metadata:
             root_folder = file_info.path_metadata.get('root_folder')
 
-        # Add root structure folder first (e.g., "Desktop - 2996KD")
-        # BUT skip if base_dir already contains the root folder name
-        if _should_add_root_folder(base_dir, root_folder):
+        # Add root structure folder first (e.g., "Desktop - 2996KD"),
+        # but skip it when `relative` already starts with that folder —
+        # otherwise the destination repeats the segment.
+        if relative is None and _should_add_root_folder(base_dir, root_folder):
             subfolders.append(root_folder)
 
         # Use custom folder mapping for category
@@ -209,7 +232,11 @@ def plan_organization(
         if not subfolders:
             subfolders.append("Unclassified")
 
-        destination = base_dir.joinpath(*subfolders, file_info.path.name)
+        # Keeping the relative path is what prevents two files with the
+        # same name from resolving to one destination, where the executor
+        # would skip the second as "already exists".
+        tail = relative if relative is not None else Path(file_info.path.name)
+        destination = base_dir.joinpath(*subfolders, tail)
         plan.append((file_info, destination))
 
         logger.debug(f"Planned: {file_info.path} → {destination}")

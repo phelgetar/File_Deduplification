@@ -15,11 +15,16 @@ semantic_contexts:
   # All files under these paths stay together with complete structure
   - name: "Personal - Disability/VA"
     patterns:
-      - "/personal/"
+      # NOTE: "/personal/" deliberately does NOT appear here. It is also a
+      # pattern of the priority-80 "Personal" context, and because contexts
+      # are sorted by priority and the first match wins, listing it here
+      # routed every personal file — tax returns, family photos — into
+      # Personal/Disability/VA and made the priority-80 rule unreachable.
       - "/disability/"
       - "/va_img"
-      - "/va/"
       - "/medical/"
+      # "/va/" was dropped as well: two letters between slashes matches far
+      # more than VA medical records. Add a narrower pattern if needed.
     destination: "Personal/Disability/VA"
     preserve_structure: true
     priority: 100
