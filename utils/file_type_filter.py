@@ -12,10 +12,11 @@
 # Author: Tim Canady
 # Created: 2025-11-15
 #
-# Version: 1.0.0
-# Last Modified: 2025-11-15 by Tim Canady
+# Version: 1.1.0
+# Last Modified: 2026-08-20 by Tim Canady
 #
 # Revision History:
+# - 1.1.0 (2026-08-20): Groups read from config/rules.yaml, beside the categories they select — Tim Canady
 # - 1.0.0 (2025-11-15): Initial file type filter utility — Tim Canady
 ###################################################################
 
@@ -23,6 +24,8 @@ from pathlib import Path
 from typing import Set, List, Optional
 import yaml
 import logging
+
+from core import rules
 
 logger = logging.getLogger(__name__)
 
@@ -37,22 +40,30 @@ class FileTypeFilter:
         Args:
             config_path: Path to file_type_groups.yaml
         """
-        if config_path is None:
-            config_path = Path(__file__).parent.parent / "config" / "file_type_groups.yaml"
+        # Groups come from config/rules.yaml, beside the categories they
+        # select. They used to live in their own file, and that is how
+        # "code" came to mean .py while the classifier called .py a
+        # document — two lists of the same extensions, edited apart.
+        #
+        # A custom config_path is still honoured for tests and for anyone
+        # keeping a private group file.
+        if config_path is not None:
+            self.groups = self._load_legacy(config_path)
+        else:
+            self.groups = {name: {"description": rules.describe_group(name)}
+                           for name in rules.group_names()}
+            self._from_rules = True
 
-        self.config = self._load_config(config_path)
-        self.groups = self.config.get('file_type_groups', {})
+    _from_rules = False
 
-    def _load_config(self, config_path: Path) -> dict:
-        """Load file type groups configuration."""
+    def _load_legacy(self, config_path: Path) -> dict:
+        """Read a standalone file_type_groups.yaml, for callers that pass one."""
         try:
             with open(config_path, 'r') as f:
-                config = yaml.safe_load(f)
-                logger.info(f"Loaded file type groups from {config_path}")
-                return config
+                return (yaml.safe_load(f) or {}).get('file_type_groups', {})
         except Exception as e:
             logger.error(f"Error loading config from {config_path}: {e}")
-            return {'file_type_groups': {}}
+            return {}
 
     def get_extensions(self, group_names: List[str]) -> Set[str]:
         """
@@ -67,6 +78,13 @@ class FileTypeFilter:
         extensions = set()
 
         for group_name in group_names:
+            if self._from_rules:
+                found = rules.extensions_for_group(group_name)
+                if not found:
+                    logger.warning(f"Unknown file type group: {group_name}")
+                extensions.update(found)
+                continue
+
             group = self.groups.get(group_name)
             if not group:
                 logger.warning(f"Unknown file type group: {group_name}")
@@ -92,6 +110,8 @@ class FileTypeFilter:
 
     def get_group_description(self, group_name: str) -> Optional[str]:
         """Get description for a group."""
+        if self._from_rules:
+            return rules.describe_group(group_name)
         group = self.groups.get(group_name)
         if group:
             return group.get('description')

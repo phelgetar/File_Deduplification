@@ -13,62 +13,27 @@
 # Author: Tim Canady
 # Created: 2025-11-14
 #
-# Version: 1.0.0
-# Last Modified: 2025-11-14 by Tim Canady
+# Version: 1.1.0
+# Last Modified: 2026-08-20 by Tim Canady
 #
 # Revision History:
+# - 1.1.0 (2026-08-20): Folder table moved into config/rules.yaml, beside the extensions it maps — Tim Canady
 # - 1.0.0 (2025-11-14): Initial folder mapping configuration — Tim Canady
 ###################################################################
 
 from pathlib import Path
 from typing import Dict, Optional
 
-# Custom folder mapping: category -> relative path
-# This maps classification categories to your desired folder structure
-CATEGORY_FOLDER_MAP: Dict[str, str] = {
-    # Documents. 'document' is the generic fallback and must NOT be
-    # Docs/Word — that is what filed every PDF and .txt under Word.
-    'document': 'Docs',
-    'document_word': 'Docs/Word',
-    'document_pdf': 'Docs/PDF',
-    'document_text': 'Docs/Text',
-    'presentation': 'Docs/PowerPoints',
-    'spreadsheet': 'Docs/Spreadsheets',
+from core import rules
 
-    # Media
-    'image': 'Media/Images',
-    'audio': 'Media/Music',
-    'video': 'Media/Videos',
-    'security_camera_video': 'Media/Videos/SecurityCameraVideos',
-    'wolf_video': 'Media/Videos/WolfVids',
-
-    # Code (will preserve internal structure)
-    'code': 'Code',
-
-    # Backups (will preserve internal structure)
-    'backup': 'Backups',
-
-    # Web (will preserve internal structure)
-    'web': 'Web',
-
-    # Applications (will preserve internal structure)
-    'application': 'Applications',
-
-    # Other categories
-    'archive': 'Archives',
-    'installer': 'Installers',
-    'certificate': 'Certs',
-    'data': 'Data',
-    'font': 'Fonts',
-    'scientific': 'Scientific',
-    'education': 'Education',
-    'financial': 'Financial',
-    'temporary': 'Temp',
-    'system': 'System',
-    'shortcut': 'Shortcuts',
-    'other': 'Other',
-    'unknown': 'Unclassified'
-}
+# The category -> folder table now lives in config/rules.yaml, next to the
+# extensions that produce each category. Keeping them apart is what let a
+# .pkg land in application/ while a .app landed in Installers/: two files
+# had to be edited in step and only one ever was.
+#
+# This name is kept because scripts/, tests and the guide generator import
+# it, and because a plain dict is the right shape for callers.
+CATEGORY_FOLDER_MAP: Dict[str, str] = rules.folder_map()
 
 
 def get_custom_folder(category: str) -> Optional[Path]:

@@ -286,12 +286,13 @@ File_Deduplification/
 ├── README.md
 ├── WORKBENCH.md             # File Workbench: the web UI + unified pipeline
 ├── CHANGELOG.md
-├── config/                  # YAML config + folder mapping rules
-│   ├── file_type_groups.yaml
-│   ├── folder_mapping.py
-│   ├── folder_mappings.yaml
-│   ├── image_ai_categories.yaml
-│   └── semantic_paths.yaml
+├── config/                  # Three rule files, one question each
+│   ├── rules.yaml           # WHAT a file is: extension → category → folder,
+│   │                        #   the --file-types groups, and the project roots
+│   │                        #   whose trees are kept whole
+│   ├── semantic_paths.yaml  # WHERE it came from: Work, Education, Personal/VA
+│   ├── image_ai_categories.yaml  # what a photograph DEPICTS, for the vision model
+│   └── folder_mapping.py    # thin accessors over rules.yaml
 ├── core/                    # Application library code
 │   ├── main.py              # CLI implementation
 │   ├── scanner.py           # Recursive scan + atomic package detection

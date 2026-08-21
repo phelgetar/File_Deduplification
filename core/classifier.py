@@ -41,6 +41,7 @@
 ###################################################################
 
 import mimetypes
+import re
 import logging
 
 # A PDF, a Word file and a plain-text note are all "documents", but they
@@ -79,6 +80,20 @@ UNAMBIGUOUS_EXTENSIONS = {
 }
 
 
+# Anchored so a two-letter course prefix cannot swallow ordinary words:
+# "mat" must be MAT233 or MAT-233, never "matthew-wedding.jpg".
+_COURSE_PREFIX = re.compile(
+    r"^(cs|ceg|stat|mat|math|econ|phys|chem|bio|eng)[\s._-]?\d", re.IGNORECASE)
+
+# Whole words only. \b around "w2" is what stops sample.rw2 being a tax file.
+_FINANCIAL_WORDS = re.compile(
+    r"\b(tax|taxes|1040|w2|w-2|1099|quicken|finance|financial|invoice|"
+    r"receipt|banking|investment|retirement|401k|ira)\b", re.IGNORECASE)
+
+# .tax2024, .q2023, .t225, .h226 — the digits are the point.
+_YEAR_STAMPED_FINANCIAL = re.compile(r"^\.(tax|q|t|h)\d{2,4}$", re.IGNORECASE)
+
+
 def _document_category(file_extension: str) -> str:
     """Which kind of document this is, defaulting to the generic bucket."""
     ext = (file_extension or "").lower()
@@ -90,6 +105,7 @@ def _document_category(file_extension: str) -> str:
         return "document_text"
     return "document"
 from models.file_info import FileInfo
+from core import rules
 
 def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None) -> FileInfo:
     """
@@ -179,8 +195,28 @@ def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None
     # STANDARD CLASSIFICATION (only if not in structure-preserving directory)
     # ====================================================================
 
-    # MIME type based classification
-    if category == "unknown" and mime_type:
+    # The extension table comes FIRST, and is authoritative.
+    #
+    # It used to come last, behind MIME, and that ordering was the whole
+    # bug: mimetypes calls .py "text/x-python", the startswith("text")
+    # branch below claimed it as prose, and the specific text/x-python
+    # branch further down could never be reached. 43,701 source files —
+    # .java, .html, .js, .c, .py — were filed as documents because of it.
+    #
+    # config/rules.yaml lists each extension exactly once and derives the
+    # --file-types groups and destination folders from the same rows, so
+    # the three can no longer disagree the way they did on .py, .rw2
+    # and .docm.
+    if category == "unknown":
+        category = rules.category_for_extension(file_extension)
+
+        # Year-stamped tax and accounting files: .tax2024, .q2023, .t225,
+        # .h226. Anchored to digits so .ts and .h are not swept in.
+        if category is None and _YEAR_STAMPED_FINANCIAL.match(file_extension):
+            category = "financial"
+
+    # MIME type, for extensions the table does not know
+    if (category is None or category == "unknown") and mime_type:
         if mime_type.startswith("image"):
             category = "image"
         elif mime_type.startswith("video"):
@@ -219,135 +255,11 @@ def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None
         else:
             category = None  # Will fall through to extension-based
 
-    # Extension-based classification (if MIME type didn't match or wasn't found)
+    # Name and path heuristics, for files whose extension and MIME type
+    # both say nothing.
     if category is None or category == "unknown":
-        # Images
-        if file_extension in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".tiff", ".tif",
-                             ".ico", ".heic", ".heif", ".raw", ".cr2", ".nef", ".dng", ".psd", ".ai",
-                             ".eps", ".indd"]:
-            category = "image"
-
-        # Videos
-        elif file_extension in [".mp4", ".avi", ".mov", ".wmv", ".flv", ".mkv", ".webm", ".m4v",
-                               ".mpg", ".mpeg", ".3gp", ".ogv", ".vob", ".ts", ".mts", ".m2ts"]:
-            category = "video"
-
-        # Audio
-        elif file_extension in [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma", ".opus",
-                               ".ape", ".alac", ".aiff", ".mid", ".midi"]:
-            category = "audio"
-
-        # Documents
-        elif file_extension in [".pdf", ".doc", ".docx", ".txt", ".rtf", ".odt", ".md", ".tex",
-                               ".pages", ".epub", ".mobi", ".azw", ".djvu"]:
-            category = _document_category(file_extension)
-
-        # Spreadsheets
-        elif file_extension in [".csv", ".xlsx", ".xls", ".ods", ".numbers", ".tsv"]:
-            category = "spreadsheet"
-
-        # Presentations
-        elif file_extension in [".ppt", ".pptx", ".odp", ".key"]:
-            category = "presentation"
-
-        # Code and Scripts (including compiled code)
-        elif file_extension in [".py", ".js", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".rb",
-                               ".go", ".rs", ".sh", ".bash", ".zsh", ".php", ".swift", ".kt", ".scala",
-                               ".r", ".m", ".vb", ".pl", ".lua", ".groovy", ".ts", ".jsx", ".tsx",
-                               ".sql", ".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue",
-                               ".dart", ".f90", ".f", ".asm", ".s", ".lisp", ".cl", ".lsp", ".fasl", ".asd",
-                               ".scm", ".el", ".clj", ".coffee", ".hs", ".ml", ".erl", ".ex", ".jl", ".nim",
-                               ".pro", ".prolog",
-                               ".scpt", ".applescript", ".bat", ".cmd", ".ps1", ".psm1",
-                               ".class", ".pyc", ".pyo", ".pyd", ".o", ".obj", ".a", ".lib",
-                               ".jar", ".war", ".ear"]:
-            category = "code"
-
-        # Archives and Disk Images
-        elif file_extension in [".zip", ".tar", ".gz", ".bz2", ".7z", ".rar", ".xz", ".lz", ".lzma",
-                               ".iso", ".dmg", ".img", ".vhd", ".vmdk", ".vdi", ".ova", ".ovf", ".qcow2",
-                               ".toast", ".cdr", ".nrg", ".mds", ".mdf",
-                               ".mdzip", ".sitx", ".cab", ".ace", ".arj", ".cpio"]:
-            category = "archive"
-
-        # Data files
-        elif file_extension in [".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".conf", ".cfg",
-                               ".csv", ".tsv", ".sql", ".sqlite", ".db", ".mdb", ".accdb",
-                               ".sqlite3", ".sqlite-wal", ".sqlite-shm", ".dat", ".data",
-                               ".prefs", ".properties", ".config", ".settings"]:
-            category = "data"
-
-        # Fonts
-        elif file_extension in [".ttf", ".otf", ".woff", ".woff2", ".eot", ".fon", ".dfont"]:
-            category = "font"
-
-        # Installers and Executables
-        elif file_extension in [".exe", ".msi", ".app", ".pkg", ".mpkg", ".deb", ".rpm", ".apk", ".ipa",
-                               ".run", ".bin", ".out", ".elf", ".dll", ".so", ".dylib",
-                               ".msu", ".cab", ".appx", ".msix",
-                               ".flatpak", ".snap", ".appimage"]:  # Linux package formats
-            category = "installer"
-
-        # Certificates and Security
-        elif file_extension in [".p7b", ".p12", ".pfx", ".cer", ".crt", ".pem", ".der", ".key",
-                               ".csr", ".p7c", ".spc", ".pub", ".wzd"]:
-            category = "certificate"
-
-        # Shortcuts and Links
-        elif file_extension in [".lnk", ".url", ".webloc", ".desktop", ".rdp", ".vncloc"]:
-            category = "shortcut"
-
-        # Scientific/Engineering/Medical
-        elif file_extension in [".mat", ".fig", ".hdf5", ".h5", ".nc", ".fits", ".npy", ".npz",
-                               ".rdata", ".rds", ".sav", ".dta", ".pkl", ".pickle",
-                               ".dcm", ".dicom"]:  # DICOM medical imaging files
-            category = "scientific"
-
-        # Financial and Tax files
-        elif file_extension in [
-            # Quicken files
-            ".qdf", ".qel", ".qfx", ".qif", ".qpb", ".qsd", ".qph", ".qxf", ".qmtf", ".qnx",
-            # Tax software files
-            ".tax", ".txf",  # TurboTax
-            ".t23", ".t24", ".t25", ".t26",  # TaxAct (year-specific)
-            ".h23", ".h24", ".h25", ".h26",  # H&R Block (year-specific)
-        ]:
-            category = "financial"
-        # Check for year-specific financial files (e.g., .tax2024, .q2023)
-        elif (file_extension.startswith(".tax") or
-              file_extension.startswith(".q2") or
-              file_extension.startswith(".t2") or
-              file_extension.startswith(".h2")):
-            category = "financial"
-
-        # Email and message archives (Apple Mail, Outlook for Mac, iChat).
-        # Classified as "data" for consistency with the LLM's category for
-        # the ~1M such files it classified before this rule existed.
-        elif file_extension in [".emlx", ".olk14message", ".olk15message",
-                                ".olk15msgsource", ".ichat"]:
-            category = "data"
-
-        # Backup files
-        elif file_extension in [".bak", ".backup", ".old", ".orig", ".save", ".swp", ".tmp~"]:
-            category = "backup"
-
-        # Temporary files
-        elif file_extension in [".tmp", ".temp", ".cache", ".crdownload", ".part", ".download",
-                               ".partial", ".filepart"]:
-            category = "temporary"
-
-        # macOS/iOS specific files
-        elif file_extension in [".strings", ".plist", ".nib", ".xib", ".storyboard", ".mobileprovision",
-                               ".entitlements", ".car", ".tbd", ".framework", ".bundle", ".xcuserstate",
-                               ".xcworkspacedata", ".xcscheme", ".xcbkptlist"]:
-            category = "system"
-
-        # Xcode project files
-        elif file_extension in [".xcodeproj", ".xcworkspace", ".pbxproj"]:
-            category = "code"
-
         # System files by name (no extension)
-        elif file_info.path.name in ["CodeResources", "Info.plist", "PkgInfo", "version.plist",
+        if file_info.path.name in ["CodeResources", "Info.plist", "PkgInfo", "version.plist",
                                      "Makefile", "makefile", "Dockerfile", "Vagrantfile",
                                      "Gemfile", "Rakefile", ".gitignore", ".dockerignore",
                                      "bootstrap", "jquery", "LICENSE", "README", "CHANGELOG"]:
@@ -377,17 +289,19 @@ def classify_file(file_info: FileInfo, use_db: bool = False, llm_classifier=None
         ]):
             category = "data"
 
-        # Education files (course prefixes)
-        elif any(file_name.startswith(prefix.lower()) for prefix in [
-            "cs", "ceg", "stat", "mat", "econ", "phys", "chem", "bio", "eng", "math"
-        ]):
+        # Education files (course prefixes), e.g. CS4850, MATH-233. The
+        # prefix must be followed by a digit or separator: plain
+        # startswith("mat") also matched "matthew-wedding.jpg", and
+        # startswith("bio") matched every "bio.txt".
+        elif _COURSE_PREFIX.match(file_name):
             category = "education"
 
-        # Financial files by name/path (tax returns, financial documents, etc.)
-        elif any(keyword in file_name or keyword in file_path_str.lower() for keyword in [
-            "tax", "taxes", "1040", "w2", "w-2", "1099", "quicken", "finance", "financial",
-            "invoice", "receipt", "banking", "investment", "retirement", "401k", "ira"
-        ]):
+        # Financial files by name or path. Matched on word boundaries: a
+        # bare substring test made "w2" fire on sample.rw2 and bmw2, "ira"
+        # on any path through a folder named Miranda, and "tax" on
+        # syntax.txt. Those only surfaced for files no other rule claimed,
+        # but they were still wrong.
+        elif _FINANCIAL_WORDS.search(file_name) or _FINANCIAL_WORDS.search(file_path_str.lower()):
             category = "financial"
 
         else:

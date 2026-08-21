@@ -173,7 +173,7 @@ def main():
         from core import projects
         print("Trees kept intact (these outrank every other rule):\n")
         print(projects.describe())
-        print("\nEdit config/project_roots.yaml to add your own, or pass "
+        print("\nEdit the project_roots section of config/rules.yaml to add your own, or pass "
               "--no-project-roots for one run.")
         sys.exit(0)
 

@@ -675,11 +675,12 @@ File_Deduplification/
 +-- README.md                # Deduplicator CLI + database reference
 +-- WORKBENCH.md             # File Workbench: web UI + unified pipeline
 +-- CHANGELOG.md
-+-- config/                  # YAML config + folder mapping rules
-|   +-- file_type_groups.yaml
-|   +-- folder_mapping.py
-|   +-- image_ai_categories.yaml
-|   +-- semantic_paths.yaml
++-- config/                  # Three rule files, one question each
+|   +-- rules.yaml           # WHAT a file is: extension -> category -> folder,
+|   |                        #   the --file-types groups, and the project roots
+|   +-- semantic_paths.yaml  # WHERE it came from: Work, Education, Personal/VA
+|   +-- image_ai_categories.yaml  # what a photograph DEPICTS, for the vision model
+|   +-- folder_mapping.py    # thin accessors over rules.yaml
 +-- core/                    # Application library code
 |   +-- main.py              # CLI: argument parsing and terminal output
 |   +-- pipeline.py          # The pipeline as a library (CLI + server)

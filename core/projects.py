@@ -44,7 +44,10 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "project_roots.yaml"
+# These rules live in the same file as the categories they outrank, so the
+# precedence between them is visible in one place.
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "rules.yaml"
+CONFIG_SECTION = "project_roots"
 
 
 @dataclass(frozen=True)
@@ -64,7 +67,8 @@ def _load() -> dict:
     global _config
     if _config is None:
         try:
-            _config = yaml.safe_load(CONFIG_PATH.read_text()) or {}
+            whole = yaml.safe_load(CONFIG_PATH.read_text()) or {}
+            _config = whole.get(CONFIG_SECTION) or {}
         except (OSError, yaml.YAMLError) as e:
             logger.warning("Could not read %s: %s", CONFIG_PATH, e)
             _config = {}

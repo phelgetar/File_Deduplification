@@ -66,13 +66,13 @@ def projects(tmp_path, monkeypatch):
     (plain / "reading.pdf").write_bytes(b"%PDF-1.4")
 
     config = tmp_path / "project_roots.yaml"
-    config.write_text(yaml.safe_dump({
+    config.write_text(yaml.safe_dump({"project_roots": {
         "enabled": True,
         "containers": [{"path": str(container), "destination": "Projects"}],
         "marker_destination": "Projects",
         "markers": [".git", "package.json"],
         "never_roots": [],
-    }))
+    }}))
 
     monkeypatch.setattr(mod, "CONFIG_PATH", config)
     monkeypatch.setattr(mod, "_config", None)
@@ -146,10 +146,10 @@ def test_home_directory_is_never_a_root(tmp_path, monkeypatch):
     import core.projects as mod
 
     config = tmp_path / "project_roots.yaml"
-    config.write_text(yaml.safe_dump({
+    config.write_text(yaml.safe_dump({"project_roots": {
         "enabled": True, "containers": [],
         "markers": ["Makefile"], "marker_destination": "Projects",
-    }))
+    }}))
     monkeypatch.setattr(mod, "CONFIG_PATH", config)
     monkeypatch.setattr(mod, "_config", None)
     mod._is_project_dir.cache_clear()
