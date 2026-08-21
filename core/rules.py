@@ -129,7 +129,16 @@ def extensions_for_group(group: str) -> Set[str]:
 
 
 def group_names() -> List[str]:
-    return sorted(set(filter_groups()) | set(categories()))
+    """Every name --file-types accepts and that actually selects something.
+
+    Categories with no extensions of their own — `other`, `unknown`,
+    `application`, `education`, the video collections — are reached by
+    path and filename rules during classification, never by extension.
+    Offering them as scan filters would be a trap: the scan would match
+    nothing and look like an empty disk.
+    """
+    usable = {c for c in categories() if extensions_for_category(c)}
+    return sorted(set(filter_groups()) | usable)
 
 
 def describe_group(group: str) -> str:

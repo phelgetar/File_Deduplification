@@ -160,3 +160,20 @@ def test_keyword_rules_still_fire_on_real_matches(path, expected):
 @pytest.mark.parametrize("extension", [".tax2024", ".q2023", ".t225", ".h226"])
 def test_year_stamped_financial_extensions(extension):
     assert _classify(extension) == "financial"
+
+
+def test_no_advertised_group_selects_nothing():
+    """A group that matches no extension would scan an empty disk.
+
+    Categories like `other`, `unknown` and the video collections are
+    reached by path and filename rules, never by extension, so they must
+    not be offered as scan filters — on the CLI or in the UI dropdown.
+    """
+    dead = [g for g in rules.group_names() if not rules.extensions_for_group(g)]
+    assert dead == []
+
+
+def test_extensionless_categories_are_rejected_not_silently_empty():
+    for name in ("other", "unknown", "education"):
+        assert name not in rules.group_names()
+        assert rules.extensions_for_group(name) == set()
