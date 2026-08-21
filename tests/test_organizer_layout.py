@@ -94,3 +94,72 @@ def test_before_context_still_available(monkeypatch):
             "Docs/PowerPoints/Education/WSU/F18/deck.pptx"
     finally:
         org._context_detector = None
+
+
+# ---------------------------------------------------------------------------
+# Cohesive units: a captured folder is not a pile to be sorted
+# ---------------------------------------------------------------------------
+
+def _plan_many(entries, out=Path("/out")):
+    infos = [FileInfo(path=Path(p), size=10, type=t) for p, t in entries]
+    return {str(fi.path): str(dest).replace("/out/", "")
+            for fi, dest in plan_organization(infos, out, source_root=Path("/"))}
+
+
+def _desktop(folder, entries):
+    return [(f"/Volumes/home/canamac/Desktop/{folder}/{name}", cat)
+            for name, cat in entries]
+
+
+MIXED = [(f"f{i}.x", cat) for i, cat in enumerate(
+    ["data", "code", "certificate", "backup", "archive", "application",
+     "image", "document_pdf", "video", "spreadsheet"])]
+
+
+def test_a_captured_folder_is_not_split_by_category():
+    """fred_disk is somebody's Windows disk: 18 categories, one meaning."""
+    plan = _plan_many(_desktop("fred_disk", MIXED))
+    roots = {"/".join(d.split("/")[:2]) for d in plan.values()}
+    assert roots == {"Desktop/fred_disk"}
+
+
+def test_the_structure_inside_a_unit_is_preserved():
+    plan = _plan_many(_desktop("fred_disk", MIXED)
+                      + [("/Volumes/home/canamac/Desktop/fred_disk/FRED_3.0/"
+                          "sub/deep.dat", "data")])
+    assert plan["/Volumes/home/canamac/Desktop/fred_disk/FRED_3.0/sub/deep.dat"] \
+        == "Desktop/fred_disk/FRED_3.0/sub/deep.dat"
+
+
+def test_a_single_purpose_folder_is_still_categorised():
+    """A camera folder of nothing but JPEGs is one category, so it sorts."""
+    entries = [(f"PIC_{i:04d}.JPG", "image") for i in range(12)]
+    plan = _plan_many(_desktop("100JVCSO", entries))
+    assert set(plan.values()) == {
+        f"Desktop/Media/Images/100JVCSO/PIC_{i:04d}.JPG" for i in range(12)}
+
+
+def test_loose_files_are_still_categorised():
+    plan = _plan_many([
+        ("/Volumes/home/canamac/Desktop/report.pdf", "document_pdf"),
+        ("/Volumes/home/canamac/Desktop/shot.png", "image"),
+        ("/Volumes/home/canamac/Desktop/notes.doc", "document_word"),
+    ])
+    assert plan["/Volumes/home/canamac/Desktop/report.pdf"] == "Desktop/Docs/PDF/report.pdf"
+    assert plan["/Volumes/home/canamac/Desktop/shot.png"] == "Desktop/Media/Images/shot.png"
+
+
+def test_a_small_mixed_folder_is_not_a_unit():
+    """Three files of three types is not a captured disk; below the floor."""
+    entries = [("a.dat", "data"), ("b.py", "code"), ("c.pdf", "document_pdf")]
+    plan = _plan_many(_desktop("scratch", entries))
+    roots = {"/".join(d.split("/")[:2]) for d in plan.values()}
+    assert roots != {"Desktop/scratch"}
+    assert "Desktop/Data" in roots
+
+
+def test_a_big_single_category_folder_is_not_a_unit():
+    """Volume alone is not evidence — it takes spread across categories."""
+    entries = [(f"n{i}.txt", "document_text") for i in range(40)]
+    plan = _plan_many(_desktop("logs", entries))
+    assert all(d.startswith("Desktop/Docs/Text/logs/") for d in plan.values())

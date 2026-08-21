@@ -205,6 +205,12 @@ def plan_organization(
     plan = []
     detector = _get_context_detector()
 
+    # One pass over the whole list before planning anything, to find the
+    # folders that must not be split by category. This needs the full list
+    # — whether fred_disk is a captured unit or a pile is not visible from
+    # any single file inside it.
+    cohesive = _cohesive_units(files, detector)
+
     for file_info in files:
         # ====================================================================
         # PRIORITY 0: PROJECT ROOTS (OUTRANKS EVERYTHING)
@@ -228,7 +234,9 @@ def plan_organization(
         # ====================================================================
         context = detector.detect_context(file_info.path)
         if context:
-            destination = _plan_context_based(file_info, base_dir, preserve_root_structure, context)
+            destination = _plan_context_based(file_info, base_dir,
+                                              preserve_root_structure, context,
+                                              cohesive)
             plan.append((file_info, destination))
             logger.info(f"Context-based: {context.context_name} | {file_info.path} → {destination}")
             continue
@@ -590,7 +598,81 @@ def _plan_application_project(file_info: FileInfo, base_dir: Path, preserve_root
     return destination
 
 
-def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_structure: bool, context) -> Path:
+def _context_tail(file_info: FileInfo, context) -> Optional[List[str]]:
+    """The path below the matched context directory, overlap already removed.
+
+    Shared by the planner and by the cohesion pre-pass so the two can
+    never disagree about what "the first folder under the context" is.
+    Returns None when the pattern is not found in the path as written.
+    """
+    file_path_str = str(file_info.path)
+    pattern_idx = file_path_str.lower().find(context.matched_pattern.lower())
+    if pattern_idx < 0:
+        return None
+
+    parts_from_pattern = Path(file_path_str[pattern_idx:]).parts
+    context_parts = context.destination.split('/')
+
+    # The patterns carry surrounding slashes ("/desktop/"), so the path
+    # begins with a separator and Path().parts yields ("/", "Desktop", …).
+    tail = [p for p in parts_from_pattern if p not in ("/", "\\")]
+    if len(tail) <= 1:
+        return [file_info.path.name]
+    tail = tail[1:]                       # skip the matched directory itself
+
+    # The destination may already spell out folders the tail repeats:
+    # matching "/disability/" under a destination of "Personal/Disability/VA"
+    # leaves a tail starting with "VA", giving …/VA/VA/.
+    overlap = 0
+    for k in range(min(len(context_parts), len(tail)), 0, -1):
+        if ([q.lower() for q in context_parts[-k:]]
+                == [q.lower() for q in tail[:k]]):
+            overlap = k
+            break
+    return tail[overlap:]
+
+
+# A folder under a context that spans this many categories, over this many
+# files, is a captured unit rather than a pile to be sorted. fred_disk on
+# the Desktop is somebody's Windows disk — $RECYCLE.BIN, System Volume
+# Information, event logs, 5,986 files across a dozen types — and filing it
+# by type scattered it into Data/, Code/, Certs/, Backups/, Archives/ and
+# Applications/, six copies of a name that means one thing.
+#
+# Loose files and single-purpose folders stay categorised: a Desktop PDF
+# still lands in Docs/PDF, and a camera folder of nothing but JPEGs is one
+# category, so it goes to Media/Images.
+COHESIVE_MIN_CATEGORIES = 3
+COHESIVE_MIN_FILES = 8
+
+
+def _cohesive_units(files: List[FileInfo], detector) -> set:
+    """{(context destination, first folder)} for units that must stay whole."""
+    spread: Dict[tuple, set] = {}
+    counts: Dict[tuple, int] = {}
+    for file_info in files:
+        context = detector.detect_context(file_info.path)
+        if not context or not getattr(context, "group_by_category", True):
+            continue
+        tail = _context_tail(file_info, context)
+        if not tail or len(tail) < 2:
+            continue                      # a loose file, not a folder
+        key = (context.destination, tail[0])
+        spread.setdefault(key, set()).add(file_info.type)
+        counts[key] = counts.get(key, 0) + 1
+
+    units = {key for key, seen in spread.items()
+             if len(seen) >= COHESIVE_MIN_CATEGORIES
+             and counts[key] >= COHESIVE_MIN_FILES}
+    for destination, folder in sorted(units):
+        logger.info("Cohesive unit: %s/%s stays whole (%d files, %d categories)",
+                    destination, folder, counts[(destination, folder)],
+                    len(spread[(destination, folder)]))
+    return units
+
+
+def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_structure: bool,
+                        context, cohesive: set = frozenset()) -> Path:
     """
     Plan organization for files detected via semantic context.
 
@@ -649,8 +731,15 @@ def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_struc
         # Contexts that are a record set rather than a location set it
         # False, so a medical series and its cover letter stay together
         # instead of being split across Media/Images and Docs.
+        # A captured unit is not a pile to be sorted: skip the category
+        # folder so the whole subtree arrives under one name.
+        tail_preview = _context_tail(file_info, context) or []
+        in_unit = (len(tail_preview) >= 2
+                   and (context.destination, tail_preview[0]) in cohesive)
+
         category_parts = []
-        if getattr(context, "group_by_category", True) and file_info.type:
+        if (getattr(context, "group_by_category", True) and file_info.type
+                and not in_unit):
             category_folder = get_custom_folder(file_info.type)
             if category_folder:
                 category_parts = str(category_folder).split('/')
@@ -679,29 +768,7 @@ def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_struc
             subfolders.extend(category_parts)
 
         # Preserve the structure below the matched directory.
-        #
-        # The patterns carry surrounding slashes ("/desktop/"), so
-        # path_from_pattern begins with a separator and Path().parts
-        # yields ("/", "Desktop", …). Slicing [1:] therefore dropped the
-        # root slash and kept the matched directory — which is what put
-        # it in the destination a second time.
-        tail = [p for p in parts_from_pattern if p not in ("/", "\\")]
-        if len(tail) > 1:
-            tail = tail[1:]                   # skip the matched directory
-            # The destination may already spell out folders the tail
-            # repeats: matching "/disability/" under a destination of
-            # "Personal/Disability/VA" leaves a tail starting with "VA",
-            # giving …/VA/VA/. Drop the longest overlap between the end
-            # of the destination and the start of the tail.
-            overlap = 0
-            for k in range(min(len(context_parts), len(tail)), 0, -1):
-                if ([p.lower() for p in context_parts[-k:]]
-                        == [p.lower() for p in tail[:k]]):
-                    overlap = k
-                    break
-            subfolders.extend(tail[overlap:])
-        else:
-            subfolders.append(file_info.path.name)
+        subfolders.extend(_context_tail(file_info, context) or [file_info.path.name])
 
         destination = base_dir.joinpath(*subfolders)
     else:
