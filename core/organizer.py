@@ -12,10 +12,11 @@
 # Author: Tim Canady
 # Created: 2025-09-28
 #
-# Version: 0.9.0
-# Last Modified: 2025-11-14 by Tim Canady
+# Version: 0.10.0
+# Last Modified: 2026-08-20 by Tim Canady
 #
 # Revision History:
+# - 0.10.0 (2026-08-20): Project roots (Priority 0) — whole trees kept intact, outranking every other rule — Tim Canady
 # - 0.9.0 (2025-11-14): MAJOR - Added semantic context detection (Priority 1 organization) for Personal/Disability/VA, Work, Education contexts — Tim Canady
 # - 0.8.0 (2025-11-14): Added custom folder mapping support and special video subcategories (SecurityCameraVideos, WolfVids) — Tim Canady
 # - 0.7.0 (2025-11-14): Added backup directory preservation and Xcode project support (xcode, .xcodeproj, .xcworkspace) — Tim Canady
@@ -34,6 +35,7 @@ from typing import List, Tuple, Dict, Optional
 from pathlib import Path
 from config.folder_mapping import get_custom_folder, is_structure_preserving_category
 from core.context_detector import ContextDetector
+from core.projects import project_root_for
 import os
 import logging
 
@@ -135,6 +137,20 @@ def _looks_like_code_project(path: Path, levels: int = 4) -> bool:
     return False
 
 
+def _plan_project_root(file_info: FileInfo, base_dir: Path, project) -> Path:
+    """Everything under a project root, copied verbatim beneath its name.
+
+    No category folder and no context folder: the point is that the tree
+    arrives exactly as it left, so a spec, its screenshots and the code
+    they describe are still next to each other.
+    """
+    try:
+        relative = file_info.path.resolve().relative_to(project.root)
+    except (ValueError, OSError):
+        relative = Path(file_info.path.name)
+    return base_dir.joinpath(project.destination, project.name, relative)
+
+
 def _category_folder(category: str) -> list:
     """Folder segments for a category, from the one mapping that owns it.
 
@@ -191,7 +207,22 @@ def plan_organization(
 
     for file_info in files:
         # ====================================================================
-        # PRIORITY 1: SEMANTIC CONTEXT DETECTION (HIGHEST PRIORITY)
+        # PRIORITY 0: PROJECT ROOTS (OUTRANKS EVERYTHING)
+        #
+        # A project is not a category. Source, a README, design PDFs and
+        # screenshots under one project root are a single working thing;
+        # filing them by type scatters it and nothing reassembles it. So
+        # the whole subtree travels verbatim, whatever it contains.
+        # ====================================================================
+        project = project_root_for(file_info.path)
+        if project:
+            destination = _plan_project_root(file_info, base_dir, project)
+            plan.append((file_info, destination))
+            logger.debug(f"Project: {project.name} | {file_info.path} → {destination}")
+            continue
+
+        # ====================================================================
+        # PRIORITY 1: SEMANTIC CONTEXT DETECTION
         # Check for semantic path contexts BEFORE any other organization
         # Examples: Personal/Disability/VA, Work, Education
         # ====================================================================

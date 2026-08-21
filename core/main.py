@@ -124,8 +124,12 @@ def main():
         sys.exit(0)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("source", help="Root source directory")
-    parser.add_argument("--base-dir", required=True, help="Base output directory")
+    # Optional at parse time so the informational flags below (--show-mounts,
+    # --show-project-roots, --list-file-types, …) work on their own; they are
+    # required for a real run and validated once those have had their chance
+    # to exit.
+    parser.add_argument("source", nargs="?", help="Root source directory")
+    parser.add_argument("--base-dir", help="Base output directory")
     parser.add_argument("--filter", nargs="*", help="Root-level directory name patterns to include")
     parser.add_argument("--max-files", type=int, help="Maximum number of files to process")
     parser.add_argument("--dry-run-log", action="store_true", help="Log preview to file")
@@ -152,6 +156,8 @@ def main():
     parser.add_argument("--no-auto-mount", action="store_true", help="Do not attempt to mount missing network volumes; fail instead. The check that they ARE mounted still runs")
     parser.add_argument("--no-record", action="store_true", help="Do not record this run under .workbench/jobs/. By default every run is recorded so it appears in the web UI's Jobs tab and its plan stays reviewable")
     parser.add_argument("--show-mounts", action="store_true", help="Show whether the required network volumes are mounted, and exit")
+    parser.add_argument("--show-project-roots", action="store_true", help="Show which directory trees are kept intact as projects, and exit")
+    parser.add_argument("--no-project-roots", action="store_true", help="Do not keep project trees together; file every file by category as before")
     parser.add_argument("--show-parallelism", action="store_true", help="Show how each stage will be parallelised on this machine, and exit")
     args = parser.parse_args()
 
@@ -163,6 +169,17 @@ def main():
         print(mounts.describe())
         sys.exit(0)
 
+    if args.show_project_roots:
+        from core import projects
+        print("Trees kept intact (these outrank every other rule):\n")
+        print(projects.describe())
+        print("\nEdit config/project_roots.yaml to add your own, or pass "
+              "--no-project-roots for one run.")
+        sys.exit(0)
+
+    if args.no_project_roots:
+        os.environ["WORKBENCH_NO_PROJECT_ROOTS"] = "1"
+
     if args.show_parallelism:
         from core import parallel
         print(f"Detected: {parallel.hardware()}\n")
@@ -171,6 +188,17 @@ def main():
         print("\nOverride any stage with WORKBENCH_<STAGE>_WORKERS "
               "(e.g. WORKBENCH_HASH_WORKERS=32). Setting one to 1 forces it serial.")
         sys.exit(0)
+
+    if args.list_file_types:
+        from utils.file_type_filter import FileTypeFilter
+        FileTypeFilter().print_available_groups()
+        sys.exit(0)
+
+    missing = [name for name, value in
+               (("source", args.source), ("--base-dir", args.base_dir))
+               if not value]
+    if missing:
+        parser.error("the following arguments are required: " + ", ".join(missing))
 
     # Parse file types filter
     allowed_extensions = None
