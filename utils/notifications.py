@@ -22,7 +22,6 @@
 
 import os
 import json
-import requests
 import smtplib
 from email.message import EmailMessage
 from dotenv import load_dotenv
@@ -40,6 +39,12 @@ def send_slack_notification(message: str, rich_format: bool = False):
     if not SLACK_WEBHOOK_URL:
         print("⚠️ SLACK_WEBHOOK_URL not set in .env. Skipping Slack notification.")
         return
+    # Imported here, not at module scope. This module is pulled in by the
+    # CLI on every run, and requests drags in urllib3, which warns about
+    # LibreSSL on this Python — so a flag that prints two lines and exits
+    # opened with an SSL warning about a network call it never makes.
+    import requests
+
     payload = {
         "text": message
     }

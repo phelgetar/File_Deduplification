@@ -22,15 +22,22 @@
 # - 0.1.0 (2025-09-28): Initial placeholder — Tim Canady
 ###################################################################
 
-try:
-    import PySimpleGUI as sg
-    GUI_AVAILABLE = True
-except ImportError:
-    GUI_AVAILABLE = False
-    sg = None
-
 from pathlib import Path
 from typing import List, Tuple
+
+# PySimpleGUI is imported inside launch_gui(), not here.
+#
+# Importing it at module scope meant every CLI invocation paid for it,
+# including ones that print two lines and exit: `--show-project-roots`
+# and `--show-mounts` each emitted eight lines of pip instructions
+# before their own output, because PySimpleGUI prints an installation
+# banner on import and pulls in tkinter, which warns about its own
+# version. None of that has anything to do with a flag that lists rules.
+#
+# The GUI is also on its way out — the web UI supersedes it — so paying
+# its import cost on every run is doubly wrong.
+sg = None
+
 
 def launch_gui(plan: List[Tuple] = None):
     """
@@ -39,11 +46,16 @@ def launch_gui(plan: List[Tuple] = None):
     Args:
         plan: List of tuples containing (FileInfo, destination_path)
     """
-    if not GUI_AVAILABLE:
-        print("⚠️ PySimpleGUI not available. Install with:")
-        print("   python -m pip install --upgrade --extra-index-url https://PySimpleGUI.net/install PySimpleGUI")
-        print("   Skipping GUI preview...")
-        return
+    global sg
+    if sg is None:
+        try:
+            import PySimpleGUI as sg
+        except ImportError:
+            print("⚠️ PySimpleGUI not available. Install with:")
+            print("   python -m pip install --upgrade --extra-index-url "
+                  "https://PySimpleGUI.net/install PySimpleGUI")
+            print("   Skipping GUI preview...")
+            return
 
     if not plan:
         print("⚠️ No plan data provided to GUI")
