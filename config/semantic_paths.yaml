@@ -63,6 +63,97 @@ semantic_contexts:
   # Education
   # ========================================================================
   # Course materials, assignments, academic work
+  # --------------------------------------------------------------------------
+  # Schools, each its own context above the generic Education rule.
+  #
+  # Without these, every school shares one Education folder and the
+  # institution survives only as a directory further down the path. Naming
+  # them here is what makes the layout read Education/WSU/Docs/PowerPoints/
+  # rather than Education/Docs/PowerPoints/WSU/ — a school is a real
+  # division of the work, not an accident of foldering.
+  #
+  # Priority 92 so they beat the generic Education context at 90.
+  # --------------------------------------------------------------------------
+  - name: "Education/WSU"
+    patterns:
+      - "/wsu/"
+      - "/wright-state/"
+      - "/wright-state-university/"
+    destination: "Education/WSU"
+    preserve_structure: true
+    group_by_category: true
+    priority: 92
+    description: "Wright State University coursework"
+    examples:
+      - "/Documents/Education/WSU/FALL18-EGR3350/Chapter 3 Aug 30.pptx"
+
+  - name: "Education/AFIT"
+    patterns:
+      - "/afit/"
+    destination: "Education/AFIT"
+    preserve_structure: true
+    group_by_category: true
+    priority: 92
+    description: "Air Force Institute of Technology coursework"
+    examples:
+      - "/Documents/Education/AFIT/MECH532/Curtis_Ch11_Rockets.pdf"
+
+  - name: "Education/Coursera"
+    patterns:
+      - "/coursera/"
+    destination: "Education/Coursera"
+    preserve_structure: true
+    group_by_category: true
+    priority: 92
+    description: "Coursera courses"
+    examples:
+      - "/Documents/Coursera/ml-week1/notes.pdf"
+
+  - name: "Education/MIT-Sloan"
+    patterns:
+      - "/mit-sloan/"
+    destination: "Education/MIT-Sloan"
+    preserve_structure: true
+    group_by_category: true
+    priority: 92
+    description: "MIT Sloan coursework"
+    examples:
+      - "/Documents/MIT-Sloan/AI_Course/week1/assignment.pdf"
+
+  - name: "Education/Park"
+    patterns:
+      - "/park/"
+    destination: "Education/Park"
+    preserve_structure: true
+    group_by_category: true
+    priority: 92
+    description: "Park University coursework"
+    examples:
+      - "/Documents/Education/Park/CS201/paper.docx"
+
+  - name: "Education/DAU"
+    patterns:
+      - "/dau/"
+    destination: "Education/DAU"
+    preserve_structure: true
+    group_by_category: true
+    priority: 92
+    description: "Defense Acquisition University coursework"
+    examples:
+      - "/Documents/DAU/ACQ101/module3.pdf"
+
+  - name: "Education/NPS"
+    patterns:
+      - "/naval postgraduate school/"
+      - "/nps/"
+    destination: "Education/NPS"
+    preserve_structure: true
+    group_by_category: true
+    priority: 92
+    description: "Naval Postgraduate School coursework"
+    examples:
+      - "/Documents/Naval Postgraduate School/OA3103/hw2.pdf"
+
   - name: "Education"
     patterns:
       - "/education/"

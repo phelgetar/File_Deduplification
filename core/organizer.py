@@ -649,12 +649,23 @@ def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_struc
         # Contexts that are a record set rather than a location set it
         # False, so a medical series and its cover letter stay together
         # instead of being split across Media/Images and Docs.
+        category_parts = []
         if getattr(context, "group_by_category", True) and file_info.type:
             category_folder = get_custom_folder(file_info.type)
             if category_folder:
-                subfolders.extend(str(category_folder).split('/'))
+                category_parts = str(category_folder).split('/')
             else:
-                subfolders.append(file_info.type.replace(" ", "_"))
+                category_parts = [file_info.type.replace(" ", "_")]
+
+        # Context first by default, then category. Category-first scattered
+        # one course across Docs/PowerPoints/Education/WSU,
+        # Docs/PDF/Education/WSU and Media/Images/Education/WSU — the same
+        # complaint that project roots exist to answer. Set
+        # category_position: before_context to get the old layout.
+        after = getattr(context, "category_position", "after_context") != "before_context"
+
+        if not after:
+            subfolders.extend(category_parts)
 
         if (_should_add_root_folder(base_dir, root_folder)
                 and root_folder not in context_parts
@@ -663,6 +674,9 @@ def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_struc
 
         # Add context destination (e.g., "Personal/Disability/VA")
         subfolders.extend(context_parts)
+
+        if after:
+            subfolders.extend(category_parts)
 
         # Preserve the structure below the matched directory.
         #

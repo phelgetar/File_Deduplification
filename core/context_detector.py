@@ -44,6 +44,14 @@ class ContextInfo:
     # True  -> file in Media/Images/<context>/…, grouped by what it is
     # False -> file in <context>/…, keeping a record set together
     group_by_category: bool = True
+    # Where the category folder sits relative to the context folder.
+    #   "after_context"  Education/WSU/Docs/PowerPoints/FALL18/deck.pptx
+    #   "before_context" Docs/PowerPoints/Education/WSU/FALL18/deck.pptx
+    # After is the default: it keeps one subject together and subdivides
+    # it by type, rather than scattering a single course across
+    # Docs/PowerPoints, Docs/PDF and Media/Images. Finding "every
+    # presentation" is a database question, not a directory question.
+    category_position: str = "after_context"
 
 
 @dataclass
@@ -76,6 +84,9 @@ class ContextDetector:
         """
         self.semantic_contexts = []
         self.project_indicators = []
+        # File-wide default for where the category folder sits; a context
+        # may override it.
+        self.category_position = "after_context"
 
         if config_path and config_path.exists():
             self._load_config(config_path)
@@ -88,6 +99,8 @@ class ContextDetector:
         try:
             with open(config_path, 'r') as f:
                 config = yaml.safe_load(f)
+                self.category_position = config.get('category_position',
+                                                    'after_context')
                 self.semantic_contexts = config.get('semantic_contexts', [])
                 self.project_indicators = config.get('project_indicators', [])
                 logger.info(f"Loaded context configuration from {config_path}")
@@ -189,7 +202,10 @@ class ContextDetector:
                         matched_pattern=pattern,
                         metadata=metadata,
                         preserve_from_index=pattern_idx,
-                        group_by_category=context.get('group_by_category', True)
+                        group_by_category=context.get('group_by_category', True),
+                        category_position=context.get(
+                            'category_position',
+                            self.category_position)
                     )
 
                     logger.debug(f"Context detected: {context['name']} for {file_path}")
