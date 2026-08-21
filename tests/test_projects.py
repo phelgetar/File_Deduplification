@@ -66,11 +66,21 @@ def projects(tmp_path, monkeypatch):
     (plain / "reading.pdf").write_bytes(b"%PDF-1.4")
 
     config = tmp_path / "project_roots.yaml"
+    # A container matched by NAME, holding a project that carries the same
+    # marker at its own top — the MATLAB-Drive shape.
+    named = tmp_path / "copies" / "MATLAB-Drive"
+    (named / "Coinage").mkdir(parents=True)
+    (named / ".MATLABDriveTag").write_text("")
+    (named / "Coinage" / ".MATLABDriveTag").write_text("")
+    (named / "Coinage" / "catalog.pdf").write_bytes(b"%PDF-1.4")
+    (named / "loose-note.pdf").write_bytes(b"%PDF-1.4")
+
     config.write_text(yaml.safe_dump({"project_roots": {
         "enabled": True,
         "containers": [{"path": str(container), "destination": "Projects"}],
+        "container_names": [{"MATLAB-Drive": "Projects"}],
         "marker_destination": "Projects",
-        "markers": [".git", "package.json"],
+        "markers": [".git", "package.json", ".MATLABDriveTag"],
         "never_roots": [],
     }}))
 
@@ -163,3 +173,42 @@ def test_home_directory_is_never_a_root(tmp_path, monkeypatch):
 
     monkeypatch.setattr(mod, "_config", None)
     mod._is_project_dir.cache_clear()
+
+
+def test_container_matched_by_name_anywhere(projects):
+    """The same tree exists on two shares and in a backup; name matching
+    catches every copy without listing three absolute paths."""
+    doc = projects / "copies" / "MATLAB-Drive" / "Coinage" / "catalog.pdf"
+    plan = _plan([(doc, "document_pdf")], projects)
+    assert plan[doc] == Path("/out/Projects/Coinage/catalog.pdf")
+
+
+def test_a_container_is_not_itself_a_project(projects):
+    """MATLAB-Drive carries the marker at its own top as well as in each
+    synced folder. Promoting the container would sweep up loose files that
+    only happen to live there."""
+    loose = projects / "copies" / "MATLAB-Drive" / "loose-note.pdf"
+    plan = _plan([(loose, "document_pdf")], projects)
+    assert "Projects" not in plan[loose].parts
+
+
+def test_a_file_loose_in_a_container_is_not_a_project(projects):
+    """Without the guard this planned to Projects/notes.docx/notes.docx."""
+    loose = projects / "Workspaces" / "notes.docx"
+    loose.write_bytes(b"PK")
+    plan = _plan([(loose, "document_word")], projects)
+    assert "Projects" not in plan[loose].parts
+    assert plan[loose].name == "notes.docx"
+
+
+def test_outermost_container_wins(projects, monkeypatch):
+    """Under .../MATLAB-Drive/Foo/MATLAB-Drive/bar, Foo is the project —
+    an inner directory of the same name is part of it, not a new seam."""
+    import core.projects as mod
+    nested = (projects / "copies" / "MATLAB-Drive" / "Foo"
+              / "MATLAB-Drive" / "bar" / "deep.txt")
+    nested.parent.mkdir(parents=True)
+    nested.write_text("x")
+    mod._is_project_dir.cache_clear()
+    root = mod.project_root_for(nested)
+    assert root is not None and root.name == "Foo"

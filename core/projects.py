@@ -85,6 +85,26 @@ def _containers() -> List[dict]:
     return _load().get("containers", []) or []
 
 
+def _container_names() -> Dict[str, str]:
+    """{lowercased directory name: destination}.
+
+    Absolute paths do not survive contact with this data. The same tree
+    appears at /Volumes/home/Data/Restore/PycharmProjects and again at
+    /Volumes/homes/canadytw/Data/Restore/PycharmProjects, and iMac_Backup
+    holds a third copy. Matching on the directory name catches every copy
+    for free, and costs a string comparison rather than a stat.
+    """
+    entries = _load().get("container_names", []) or []
+    out: Dict[str, str] = {}
+    for entry in entries:
+        if isinstance(entry, dict):
+            for name, dest in entry.items():
+                out[str(name).lower()] = dest
+        else:
+            out[str(entry).lower()] = _marker_destination()
+    return out
+
+
 def _markers() -> set:
     return set(_load().get("markers", []) or [])
 
@@ -116,6 +136,15 @@ def _plausible_root(directory: Path) -> bool:
     """
     text = str(directory).rstrip("/")
     if text in _never_roots():
+        return False
+    # A container holds projects; it is not one. MATLAB-Drive carries a
+    # .MATLABDriveTag at its own top as well as in every synced folder, so
+    # without this the marker rule promoted the whole drive — sweeping up
+    # loose files that just happen to live there, like an emergency-kit PDF.
+    if directory.name.lower() in _container_names():
+        return False
+    if any(str(Path(e.get("path", "")).expanduser()).rstrip("/") == text
+           for e in _containers()):
         return False
     parts = directory.parts
     if len(parts) < 3:                      # "/", "/Users", "/Volumes"
@@ -159,7 +188,7 @@ def project_root_for(path) -> Optional[ProjectRoot]:
     except (OSError, RuntimeError):
         return None
 
-    # 1. Declared containers — each immediate child is one project.
+    # 1a. Containers named by absolute path.
     for entry in _containers():
         raw = entry.get("path")
         if not raw:
@@ -169,7 +198,10 @@ def project_root_for(path) -> Optional[ProjectRoot]:
             relative = candidate.relative_to(container)
         except ValueError:
             continue
-        if not relative.parts:
+        # A file sitting loose at the top of a container is not a project.
+        # Without this it became its own root, and planned to
+        # Projects/notes.docx/notes.docx.
+        if len(relative.parts) < 2:
             continue
         name = relative.parts[0]
         return ProjectRoot(
@@ -178,6 +210,26 @@ def project_root_for(path) -> Optional[ProjectRoot]:
             destination=entry.get("destination", "Projects"),
             reason=f"inside {container.name}, which holds one project per folder",
         )
+
+    # 1b. Containers matched by directory name, wherever they appear.
+    names = _container_names()
+    if names:
+        parts = candidate.parts
+        # Walk from the top so the OUTERMOST container wins: under
+        # .../PycharmProjects/Foo/Sites/bar, Foo is the project and Sites
+        # is part of it, not a container that splits Foo apart.
+        for i, part in enumerate(parts[:-2]):
+            destination = names.get(part.lower())
+            if destination is None:
+                continue
+            name = parts[i + 1]
+            return ProjectRoot(
+                root=Path(*parts[: i + 2]),
+                name=name,
+                destination=destination,
+                reason=f"inside a folder named {part}, which holds "
+                       f"one project per folder",
+            )
 
     # 2. Marker files — the nearest ancestor that looks like a project.
     for parent in candidate.parents:
@@ -195,9 +247,17 @@ def describe() -> str:
     """Human-readable summary of the configured rules."""
     if not enabled():
         return "  project-root preservation is disabled"
-    lines = ["  containers (each child is one project):"]
+    lines = ["  containers by path (each child is one project):"]
     for entry in _containers() or [{"path": "(none)"}]:
         lines.append(f"    {entry.get('path')} -> {entry.get('destination', 'Projects')}")
+    names = _container_names()
+    if names:
+        lines.append("  containers by name, wherever they appear:")
+        grouped: Dict[str, List[str]] = {}
+        for name, dest in sorted(names.items()):
+            grouped.setdefault(dest, []).append(name)
+        for dest, members in sorted(grouped.items()):
+            lines.append(f"    -> {dest}: {', '.join(members)}")
     markers = sorted(_markers())
     lines.append(f"  markers ({len(markers)}): {', '.join(markers[:12])}"
                  + (" …" if len(markers) > 12 else ""))

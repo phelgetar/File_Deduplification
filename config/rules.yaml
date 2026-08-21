@@ -277,11 +277,46 @@ project_roots:
       destination: "Projects"
       description: "Python/IDE projects — code, docs, notes and assets together"
 
-    # Websites and applications belong here too. Add your own, e.g.:
-    # - path: "/Volumes/home/Sites"
-    #   destination: "Websites"
-    # - path: "/Users/canadytw/Developer"
-    #   destination: "Projects"
+    - path: "/Users/canadytw/Documents/Documents - 2996KD/fpga"
+      destination: "Projects"
+      description: "Xilinx ISE builds — one directory per design"
+
+  # ----------------------------------------------------------------------------
+  # Containers matched by NAME, wherever the directory appears.
+  #
+  # Absolute paths do not survive contact with this data. PycharmProjects
+  # exists at /Users/canadytw/PycharmProjects, again under
+  # /Volumes/home/Data/Restore/, again under /Volumes/homes/canadytw/Data/
+  # Restore/ (the same share seen from its parent), and a third time under
+  # iMac_Backup. Matching the name catches every copy, and costs a string
+  # comparison rather than a stat.
+  #
+  # The OUTERMOST match wins: under .../PycharmProjects/Foo/Sites/bar, Foo
+  # is the project and Sites is part of it, not a seam that splits Foo.
+  # ----------------------------------------------------------------------------
+  container_names:
+    # IDE workspaces — each child is one project
+    - PycharmProjects: "Projects"
+    - CLionProjects: "Projects"
+    - NetBeansProjects: "Projects"
+    - IdeaProjects: "Projects"
+    - WebStormProjects: "Projects"
+    - workspace: "Projects"
+    - workspace-new: "Projects"
+    # Xcode. Note that XCode-42739/Backup and .../Backups are Xcode projects
+    # NAMED Backup, not backup folders — reaching them before the /backup/
+    # path rule is exactly the point of running project roots first.
+    - XCode: "Projects"
+    - XCode-42739: "Projects"
+    # MATLAB Drive syncs one folder per piece of work
+    - MATLAB-Drive: "Projects"
+    # Hardware and EDA
+    - fpga: "Projects"
+    - allegro-projects: "Projects"
+    # Websites — each child is one site
+    - Sites: "Websites"
+    - www: "Websites"
+    - public_html: "Websites"
 
   # ----------------------------------------------------------------------------
   # Markers: any directory containing one of these IS a project root, wherever
@@ -320,6 +355,23 @@ project_roots:
     # Apple project bundles (suffix match)
     - .xcodeproj
     - .xcworkspace
+    # MATLAB. .MATLABDriveTag is dropped into every synced folder, which
+    # makes it the most reliable MATLAB marker on this machine.
+    - .MATLABDriveTag
+    - .mlproj
+    # Xilinx ISE writes .xise/.gise per design; .prj also turns up in
+    # MATLAB and Code::Blocks trees and means the same thing in all of them.
+    - .xise
+    - .gise
+    - .prj
+    # Other IDEs
+    - .sln
+    - .vcxproj
+    - .cbp
+    - .Rproj
+    - .iml
+    - .classpath
+    - .project
 
   # NOTE: index.html is deliberately NOT a marker. A stray index.html saved
   # into Downloads would make every file below it one "project". Point a
