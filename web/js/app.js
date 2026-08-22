@@ -356,9 +356,12 @@ async function fsShow(path) {
     fsCurrent = d.path;
     $("fspath").textContent = d.path + (d.truncated ? "  (first 500 shown)" : "");
     $("fsup").disabled = !d.parent;
+    // A bare "No subfolders" under /Volumes reads as a broken picker when
+    // it actually means the shares dropped. The server says which.
+    const note = d.note ? `<div class="empty">${esc(d.note)}</div>` : "";
     $("fslist").innerHTML = d.dirs.length
-      ? d.dirs.map((n) => `<button data-dir="${esc(n)}">📁 ${esc(n)}</button>`).join("")
-      : `<div class="empty">No subfolders.</div>`;
+      ? note + d.dirs.map((n) => `<button data-dir="${esc(n)}">📁 ${esc(n)}</button>`).join("")
+      : note || `<div class="empty">No subfolders.</div>`;
     $("fslist").querySelectorAll("button[data-dir]").forEach((b) => {
       b.onclick = () => fsShow(
         (fsCurrent === "/" ? "" : fsCurrent) + "/" + b.dataset.dir);

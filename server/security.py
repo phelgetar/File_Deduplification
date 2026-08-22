@@ -129,13 +129,27 @@ def list_subdirectories(raw: str) -> dict:
         with os.scandir(path) as it:
             for entry in it:
                 try:
-                    if not entry.is_dir(follow_symlinks=False):
+                    # Follow symlinks. Not following them hid every
+                    # symlinked directory from the picker — including
+                    # /Volumes/Macintosh HD, which is how the boot volume
+                    # is presented, so browsing /Volumes on a machine with
+                    # nothing else mounted showed an empty list.
+                    #
+                    # Safe to follow here: browsing is read-only, and the
+                    # forbidden-root check below is applied to the resolved
+                    # target rather than to the link.
+                    if not entry.is_dir():
                         continue
                 except OSError:
                     continue
                 if entry.name.startswith("."):
                     continue
-                if any(Path(entry.path) == f for f in FORBIDDEN_ROOTS):
+                try:
+                    resolved = Path(entry.path).resolve()
+                except (OSError, RuntimeError):
+                    continue
+                if any(resolved == f or f in resolved.parents
+                       for f in FORBIDDEN_ROOTS):
                     continue
                 dirs.append(entry.name)
                 if len(dirs) >= 500:
@@ -149,7 +163,31 @@ def list_subdirectories(raw: str) -> dict:
         "parent": str(path.parent) if path != Path("/") else None,
         "dirs": sorted(dirs, key=str.lower),
         "truncated": truncated,
+        "note": _browsing_note(path, dirs),
     }
+
+
+def _browsing_note(path: Path, dirs: list) -> Optional[str]:
+    """Explain an empty or surprising listing, rather than showing nothing.
+
+    "No subfolders" under /Volumes is almost never the truth — it means
+    the shares dropped. Saying so beats leaving someone to wonder why the
+    picker is broken.
+    """
+    if str(path) != "/Volumes":
+        return None
+    try:
+        from utils import mounts
+        missing = [m for m in mounts.required_mounts()
+                   if not mounts.is_mounted(m)]
+    except Exception:
+        return None
+    if not missing:
+        return None
+    names = ", ".join(Path(m).name for m in missing)
+    return (f"Not mounted: {names}. Run the scan from the command line once "
+            f"(it mounts them), or mount in Finder — a scan of an unmounted "
+            f"path finds nothing and looks like an empty volume.")
 
 
 def allowed_file(job_dir: Path, candidate: str) -> Optional[Path]:
