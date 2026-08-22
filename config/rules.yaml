@@ -272,6 +272,23 @@ project_roots:
   # Containers win over markers, so a repository nested inside a project does
   # not carve out a smaller root than you intended.
   # ----------------------------------------------------------------------------
+  # ----------------------------------------------------------------------------
+  # Declared roots: this exact folder is one project, kept whole.
+  #
+  # The shape that needs no cleverness. A container says "my children are
+  # projects"; a marker says "any folder holding this is a project".
+  # Sometimes neither fits and you just want THIS folder — an Eclipse
+  # install holding cpp-oxygen and java-oxygen is one thing, not two
+  # projects and not a folder of them.
+  #
+  # Checked before containers and markers, because it is the most
+  # specific thing anyone can say.
+  # ----------------------------------------------------------------------------
+  roots:
+    - path: "/Users/canadytw/Documents/Documents - 2996KD/eclipse"
+      destination: "Projects"
+      description: "Eclipse installs (cpp-oxygen, java-oxygen) — one unit"
+
   containers:
     - path: "/Users/canadytw/PycharmProjects"
       destination: "Projects"
@@ -303,6 +320,9 @@ project_roots:
     - WebStormProjects: "Projects"
     - workspace: "Projects"
     - workspace-new: "Projects"
+    # Its own top level carries .git and .metadata, which would otherwise
+    # promote the whole workspace to a single project via the marker rule.
+    - eclipse-workspace: "Projects"
     # Xcode. Note that XCode-42739/Backup and .../Backups are Xcode projects
     # NAMED Backup, not backup folders — reaching them before the /backup/
     # path rule is exactly the point of running project roots first.

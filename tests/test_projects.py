@@ -212,3 +212,38 @@ def test_outermost_container_wins(projects, monkeypatch):
     mod._is_project_dir.cache_clear()
     root = mod.project_root_for(nested)
     assert root is not None and root.name == "Foo"
+
+
+def test_a_declared_root_is_one_project_whole(tmp_path, monkeypatch):
+    """Neither a container nor a marker fits an Eclipse install: it holds
+    two IDE builds, which is one thing, not two projects."""
+    import core.projects as mod
+
+    eclipse = tmp_path / "eclipse"
+    (eclipse / "cpp-oxygen").mkdir(parents=True)
+    (eclipse / "java-oxygen").mkdir()
+    (eclipse / "cpp-oxygen" / "EclipseCpp.app").mkdir()
+    (eclipse / "java-oxygen" / ".git").mkdir()      # must not carve a sub-root
+
+    config = tmp_path / "rules.yaml"
+    config.write_text(yaml.safe_dump({"project_roots": {
+        "enabled": True,
+        "roots": [{"path": str(eclipse), "destination": "Projects"}],
+        "containers": [], "container_names": [],
+        "markers": [".git"], "marker_destination": "Projects",
+        "never_roots": [],
+    }}))
+    monkeypatch.setattr(mod, "CONFIG_PATH", config)
+    monkeypatch.setattr(mod, "_config", None)
+    mod._is_project_dir.cache_clear()
+    try:
+        for leaf, expected in (
+            ("cpp-oxygen/EclipseCpp.app/Contents/Info.plist", "eclipse"),
+            ("java-oxygen/anything.txt", "eclipse"),
+        ):
+            root = mod.project_root_for(eclipse / leaf)
+            assert root is not None and root.name == expected
+            assert root.root == eclipse
+    finally:
+        monkeypatch.setattr(mod, "_config", None)
+        mod._is_project_dir.cache_clear()

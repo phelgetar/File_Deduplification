@@ -81,6 +81,18 @@ def enabled() -> bool:
     return bool(_load().get("enabled", True))
 
 
+def _roots() -> List[dict]:
+    """Directories that are each, in themselves, one project.
+
+    The third shape, and the one that needs no cleverness. A container
+    says "my children are projects"; a marker says "any folder holding
+    this is a project". Sometimes neither fits and you simply want *this
+    folder*, whole — an Eclipse install holding cpp-oxygen and
+    java-oxygen is one thing, not two projects and not a folder of them.
+    """
+    return _load().get("roots", []) or []
+
+
 def _containers() -> List[dict]:
     return _load().get("containers", []) or []
 
@@ -188,7 +200,22 @@ def project_root_for(path) -> Optional[ProjectRoot]:
     except (OSError, RuntimeError):
         return None
 
-    # 1a. Containers named by absolute path.
+    # 1. Explicit roots — this exact folder is one project. Checked first
+    # because it is the most specific thing anyone can say.
+    for entry in _roots():
+        raw = entry.get("path")
+        if not raw:
+            continue
+        root = Path(raw).expanduser()
+        if candidate == root or root in candidate.parents:
+            return ProjectRoot(
+                root=root,
+                name=root.name,
+                destination=entry.get("destination", _marker_destination()),
+                reason="declared a project root",
+            )
+
+    # 2a. Containers named by absolute path.
     for entry in _containers():
         raw = entry.get("path")
         if not raw:
@@ -211,7 +238,7 @@ def project_root_for(path) -> Optional[ProjectRoot]:
             reason=f"inside {container.name}, which holds one project per folder",
         )
 
-    # 1b. Containers matched by directory name, wherever they appear.
+    # 2b. Containers matched by directory name, wherever they appear.
     names = _container_names()
     if names:
         parts = candidate.parts
@@ -231,7 +258,7 @@ def project_root_for(path) -> Optional[ProjectRoot]:
                        f"one project per folder",
             )
 
-    # 2. Marker files — the nearest ancestor that looks like a project.
+    # 3. Marker files — the nearest ancestor that looks like a project.
     for parent in candidate.parents:
         if _plausible_root(parent) and _is_project_dir(str(parent)):
             return ProjectRoot(
@@ -247,7 +274,13 @@ def describe() -> str:
     """Human-readable summary of the configured rules."""
     if not enabled():
         return "  project-root preservation is disabled"
-    lines = ["  containers by path (each child is one project):"]
+    lines = []
+    if _roots():
+        lines.append("  declared roots (each folder is one project, whole):")
+        for entry in _roots():
+            lines.append(f"    {entry.get('path')} -> "
+                         f"{entry.get('destination', _marker_destination())}")
+    lines.append("  containers by path (each child is one project):")
     for entry in _containers() or [{"path": "(none)"}]:
         lines.append(f"    {entry.get('path')} -> {entry.get('destination', 'Projects')}")
     names = _container_names()
