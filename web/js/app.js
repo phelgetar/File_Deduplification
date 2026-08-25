@@ -238,6 +238,11 @@ $("start").onclick = async () => {
     base_dir: $("dst").value.trim(),
     file_types: $("ftypes").value.trim() || null,
     max_files: $("maxfiles").value ? Number($("maxfiles").value) : null,
+    // Blank means "no threshold" and "size it for this machine" — the same
+    // defaults the CLI uses when the flags are omitted, so the two front
+    // ends finally offer the same knobs.
+    metadata_only_size: $("metasize").value.trim() || null,
+    hash_workers: $("workers").value ? Number($("workers").value) : null,
     use_db: $("usedb").checked,
     skip_duplicates: $("skipdupes").checked,
     llm_classify: $("llm").checked,

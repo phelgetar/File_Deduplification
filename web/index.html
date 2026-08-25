@@ -163,7 +163,19 @@ button.browse { background: var(--panel-2); border: 1px solid var(--border);
           <label for="maxfiles">Max files (blank = no limit)</label>
           <input type="number" id="maxfiles" min="1" placeholder="">
         </div>
+        <div>
+          <label for="metasize" title="Files above this size are recorded without being hashed. They can no longer be detected as duplicates.">Metadata only above (blank = hash everything)</label>
+          <input type="text" id="metasize" placeholder="100MB" spellcheck="false">
+        </div>
+        <div>
+          <label for="workers" title="Parallel hashing threads. Other stages size themselves.">Hash workers (blank = auto)</label>
+          <input type="number" id="workers" min="1" max="64" placeholder="">
+        </div>
       </div>
+      <p class="dim" style="margin:6px 0 0;font-size:12px">
+        Above the size threshold a file is recorded but not read, so identical
+        large videos will <strong>not</strong> be found as duplicates.
+      </p>
       <div class="checks">
         <label><input type="checkbox" id="usedb"> Use database (enables resume, tags, image metadata)</label>
         <label><input type="checkbox" id="skipdupes"> Skip duplicates</label>
