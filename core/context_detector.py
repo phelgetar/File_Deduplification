@@ -52,6 +52,15 @@ class ContextInfo:
     # Docs/PowerPoints, Docs/PDF and Media/Images. Finding "every
     # presentation" is a database question, not a directory question.
     category_position: str = "after_context"
+    # Education wins over project roots: a .sln or .xcodeproj buried in
+    # coursework is part of the course, not a project to be lifted out of
+    # it. Off by default — elsewhere a project really is the unit.
+    beats_project_roots: bool = False
+    # Every directory below the context keeps its structure verbatim, with
+    # no category folder inserted. Loose files at the context's own level
+    # still sort. Unconditional, unlike the cohesive-unit heuristic: a
+    # course with three PDFs stays a course.
+    preserve_subfolders: bool = False
 
 
 @dataclass
@@ -205,7 +214,11 @@ class ContextDetector:
                         group_by_category=context.get('group_by_category', True),
                         category_position=context.get(
                             'category_position',
-                            self.category_position)
+                            self.category_position),
+                        beats_project_roots=context.get(
+                            'beats_project_roots', False),
+                        preserve_subfolders=context.get(
+                            'preserve_subfolders', False)
                     )
 
                     logger.debug(f"Context detected: {context['name']} for {file_path}")

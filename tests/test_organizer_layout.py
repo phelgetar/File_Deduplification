@@ -36,10 +36,8 @@ def _dest(path, category, out=Path("/out")):
 
 
 @pytest.mark.parametrize("path,category,expected", [
-    ("/Users/x/Documents/Education/WSU/FALL18-EGR3350/deck.pptx", "presentation",
-     "Education/WSU/Docs/PowerPoints/FALL18-EGR3350/deck.pptx"),
-    ("/Users/x/Documents/Education/AFIT/MECH532/rockets.pdf", "document_pdf",
-     "Education/AFIT/Docs/PDF/MECH532/rockets.pdf"),
+    # Contexts that do NOT set preserve_subfolders still file by category,
+    # with the context ahead of it.
     ("/Volumes/home/canamac/Desktop/100JVCSO/PIC_0065.JPG", "image",
      "Desktop/Media/Images/100JVCSO/PIC_0065.JPG"),
     ("/Users/x/Documents/work/reports/q3.xlsx", "spreadsheet",
@@ -47,6 +45,34 @@ def _dest(path, category, out=Path("/out")):
 ])
 def test_context_comes_before_category(path, category, expected):
     assert _dest(path, category) == expected
+
+
+@pytest.mark.parametrize("path,expected,category", [
+    ("/Users/x/Documents/Education/WSU/FALL18-EGR3350/deck.pptx",
+     "Education/WSU/FALL18-EGR3350/deck.pptx", "presentation"),
+    ("/Users/x/Documents/Education/AFIT/MECH532/rockets.pdf",
+     "Education/AFIT/MECH532/rockets.pdf", "document_pdf"),
+    ("/Users/x/Documents/Education/AFIT/SENG640/Week4/slides.pptx",
+     "Education/AFIT/SENG640/Week4/slides.pptx", "presentation"),
+    ("/Users/x/Documents/Education/Coursera/MachineLearning/Lesson3/notes.pdf",
+     "Education/Coursera/MachineLearning/Lesson3/notes.pdf", "document_pdf"),
+])
+def test_coursework_is_preserved_verbatim(path, expected, category):
+    """Under a school, the structure IS the organisation.
+
+    A week holds slides, a PDF reading, a spreadsheet and some code, and
+    they are one week's work. Filing them by type splits the week across
+    Docs/PowerPoints, Docs/PDF and Code — which is what preserve_subfolders
+    exists to prevent. Guaranteed, not inferred from how mixed the folder
+    happens to be.
+    """
+    assert _dest(path, category) == expected
+
+
+def test_loose_files_at_the_school_level_still_sort():
+    """Only directories are preserved; a stray PDF is still filed."""
+    assert _dest("/Users/x/Documents/Education/AFIT/Academic Integrity.pdf",
+                 "document_pdf") == "Education/AFIT/Docs/PDF/Academic Integrity.pdf"
 
 
 def test_one_subject_stays_together_across_types():
@@ -89,9 +115,11 @@ def test_before_context_still_available(monkeypatch):
         monkeypatch.setattr(cd, "ContextDetector", Before)
         monkeypatch.setattr(org, "ContextDetector", Before)
         org._context_detector = None
-        assert _dest("/Users/x/Documents/Education/WSU/F18/deck.pptx",
-                     "presentation") == \
-            "Docs/PowerPoints/Education/WSU/F18/deck.pptx"
+        # Education preserves verbatim now, so use a context that still
+        # files by category.
+        assert _dest("/Users/x/Documents/work/reports/q3.xlsx",
+                     "spreadsheet") == \
+            "Docs/Spreadsheets/Work/reports/q3.xlsx"
     finally:
         org._context_detector = None
 
@@ -163,3 +191,26 @@ def test_a_big_single_category_folder_is_not_a_unit():
     entries = [(f"n{i}.txt", "document_text") for i in range(40)]
     plan = _plan_many(_desktop("logs", entries))
     assert all(d.startswith("Desktop/Docs/Text/logs/") for d in plan.values())
+
+
+def test_a_project_marker_in_coursework_does_not_lift_it_out():
+    """C++Monitoring was split in half: main.cpp under one project root and
+    project.pbxproj under another, because the .xcodeproj bundle contains a
+    .xcworkspace and registered as its own root. Education claims both."""
+    for leaf in ("C++Monitoring/main.cpp",
+                 "C++Monitoring.xcodeproj/project.pbxproj"):
+        dest = _dest(f"/Users/x/Documents/Education/C++Monitoring/{leaf}", "code")
+        assert dest == f"Education/C++Monitoring/{leaf}", dest
+
+
+def test_a_sln_buried_in_coursework_stays_in_education():
+    dest = _dest("/Users/x/Documents/Education/WSU/SPR18-CS3100/Code/"
+                 "Project/Project1/Project1.sln", "code")
+    assert dest.startswith("Education/WSU/SPR18-CS3100/")
+
+
+def test_a_real_project_outside_education_is_untouched():
+    """The inversion is scoped to Education, not applied everywhere."""
+    dest = _dest("/Users/canadytw/PycharmProjects/File_Deduplification/core/db.py",
+                 "code")
+    assert dest.startswith("Projects/File_Deduplification/")

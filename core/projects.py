@@ -169,6 +169,14 @@ def _never_roots() -> set:
     return configured
 
 
+# Bundles that ARE a project marker rather than a directory holding one.
+# C++Monitoring.xcodeproj contains project.xcworkspace, which trips the
+# suffix check and made the bundle its own root nested inside the real
+# project — splitting C++Monitoring in half, main.cpp under one root and
+# project.pbxproj under another.
+BUNDLE_SUFFIXES = (".xcodeproj", ".xcworkspace", ".app", ".framework")
+
+
 def _plausible_root(directory: Path) -> bool:
     """Is this directory small enough in scope to be one project?
 
@@ -177,6 +185,8 @@ def _plausible_root(directory: Path) -> bool:
     """
     text = str(directory).rstrip("/")
     if text in _never_roots():
+        return False
+    if directory.name.endswith(BUNDLE_SUFFIXES):
         return False
     # A container holds projects; it is not one. MATLAB-Drive carries a
     # .MATLABDriveTag at its own top as well as in every synced folder, so

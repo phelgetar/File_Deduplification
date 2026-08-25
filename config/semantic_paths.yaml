@@ -80,6 +80,11 @@ semantic_contexts:
       - "/wright-state/"
       - "/wright-state-university/"
     destination: "Education/WSU"
+    # Coursework keeps its own shape: directories under a school are
+    # preserved verbatim, and a project marker buried in an assignment
+    # does not lift that assignment out of Education.
+    preserve_subfolders: true
+    beats_project_roots: true
     preserve_structure: true
     group_by_category: true
     priority: 92
@@ -91,6 +96,11 @@ semantic_contexts:
     patterns:
       - "/afit/"
     destination: "Education/AFIT"
+    # Coursework keeps its own shape: directories under a school are
+    # preserved verbatim, and a project marker buried in an assignment
+    # does not lift that assignment out of Education.
+    preserve_subfolders: true
+    beats_project_roots: true
     preserve_structure: true
     group_by_category: true
     priority: 92
@@ -102,6 +112,11 @@ semantic_contexts:
     patterns:
       - "/coursera/"
     destination: "Education/Coursera"
+    # Coursework keeps its own shape: directories under a school are
+    # preserved verbatim, and a project marker buried in an assignment
+    # does not lift that assignment out of Education.
+    preserve_subfolders: true
+    beats_project_roots: true
     preserve_structure: true
     group_by_category: true
     priority: 92
@@ -113,6 +128,11 @@ semantic_contexts:
     patterns:
       - "/mit-sloan/"
     destination: "Education/MIT-Sloan"
+    # Coursework keeps its own shape: directories under a school are
+    # preserved verbatim, and a project marker buried in an assignment
+    # does not lift that assignment out of Education.
+    preserve_subfolders: true
+    beats_project_roots: true
     preserve_structure: true
     group_by_category: true
     priority: 92
@@ -124,6 +144,11 @@ semantic_contexts:
     patterns:
       - "/park/"
     destination: "Education/Park"
+    # Coursework keeps its own shape: directories under a school are
+    # preserved verbatim, and a project marker buried in an assignment
+    # does not lift that assignment out of Education.
+    preserve_subfolders: true
+    beats_project_roots: true
     preserve_structure: true
     group_by_category: true
     priority: 92
@@ -135,6 +160,11 @@ semantic_contexts:
     patterns:
       - "/dau/"
     destination: "Education/DAU"
+    # Coursework keeps its own shape: directories under a school are
+    # preserved verbatim, and a project marker buried in an assignment
+    # does not lift that assignment out of Education.
+    preserve_subfolders: true
+    beats_project_roots: true
     preserve_structure: true
     group_by_category: true
     priority: 92
@@ -147,6 +177,11 @@ semantic_contexts:
       - "/naval postgraduate school/"
       - "/nps/"
     destination: "Education/NPS"
+    # Coursework keeps its own shape: directories under a school are
+    # preserved verbatim, and a project marker buried in an assignment
+    # does not lift that assignment out of Education.
+    preserve_subfolders: true
+    beats_project_roots: true
     preserve_structure: true
     group_by_category: true
     priority: 92
@@ -167,6 +202,11 @@ semantic_contexts:
       - "/academics/"
       - "/naval postgraduate school/"
     destination: "Education"
+    # Coursework keeps its own shape: directories under a school are
+    # preserved verbatim, and a project marker buried in an assignment
+    # does not lift that assignment out of Education.
+    preserve_subfolders: true
+    beats_project_roots: true
     preserve_structure: true
     # A location, not a record set: file by what each thing IS,
     # then keep the structure beneath the category folder.

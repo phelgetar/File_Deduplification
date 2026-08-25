@@ -137,7 +137,23 @@ def _looks_like_code_project(path: Path, levels: int = 4) -> bool:
     return False
 
 
-def _project_qualifiers(files: List[FileInfo]) -> Dict[str, List[str]]:
+def _effective_project(file_info: FileInfo, detector):
+    """The project this file belongs to, after contexts have their say.
+
+    A context marked beats_project_roots claims its files outright: a
+    .sln or an .xcodeproj buried in coursework is part of the course, not
+    a project to be lifted out of Education into Projects/.
+    """
+    project = project_root_for(file_info.path)
+    if not project:
+        return None
+    claiming = detector.detect_context(file_info.path)
+    if claiming and getattr(claiming, "beats_project_roots", False):
+        return None
+    return project
+
+
+def _project_qualifiers(files: List[FileInfo], detector) -> Dict[str, List[str]]:
     """Extra path segments for project names that would otherwise collide.
 
     Project roots are named by their own folder, which is fine until two
@@ -154,7 +170,7 @@ def _project_qualifiers(files: List[FileInfo]) -> Dict[str, List[str]]:
     """
     by_name: Dict[str, set] = {}
     for file_info in files:
-        project = project_root_for(file_info.path)
+        project = _effective_project(file_info, detector)
         if project:
             by_name.setdefault(project.name, set()).add(str(project.root))
 
@@ -256,7 +272,7 @@ def plan_organization(
 
     # Two project roots can share a leaf name. Deciding that needs the
     # whole list too, for the same reason.
-    qualifiers = _project_qualifiers(files)
+    qualifiers = _project_qualifiers(files, detector)
 
     for file_info in files:
         # ====================================================================
@@ -267,7 +283,7 @@ def plan_organization(
         # filing them by type scatters it and nothing reassembles it. So
         # the whole subtree travels verbatim, whatever it contains.
         # ====================================================================
-        project = project_root_for(file_info.path)
+        project = _effective_project(file_info, detector)
         if project:
             destination = _plan_project_root(file_info, base_dir, project,
                                              qualifiers)
@@ -807,6 +823,14 @@ def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_struc
         tail_preview = _context_tail(file_info, context) or []
         in_unit = (len(tail_preview) >= 2
                    and (context.destination, tail_preview[0]) in cohesive)
+
+        # preserve_subfolders makes that unconditional for this context.
+        # The cohesive-unit heuristic already kept most courses whole, but
+        # only because they happened to be mixed enough; a course holding
+        # three PDFs would have been broken up. Under Education the
+        # structure is the point, so it is guaranteed rather than inferred.
+        if len(tail_preview) >= 2 and getattr(context, "preserve_subfolders", False):
+            in_unit = True
 
         category_parts = []
         if (getattr(context, "group_by_category", True) and file_info.type
