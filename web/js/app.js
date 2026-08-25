@@ -45,6 +45,19 @@ function bytes(n) {
 }
 const num = (n) => (n ?? 0).toLocaleString();
 
+// Date AND time. The Jobs list showed the time alone, which is fine for
+// the run you started ten minutes ago and useless for the rest — this
+// list spans imported command-line runs from November 2025 onward, where
+// "3:14 PM" identifies nothing. Written year-first so the column sorts
+// the way it reads.
+const stamp = (seconds) => {
+  if (!seconds) return "";
+  const d = new Date(seconds * 1000);
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ` +
+         `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+};
+
 // ───────────────────────────── state ─────────────────────────────
 
 const state = { jobId: null, jobStatus: null, planTotal: 0, planOffset: 0,
@@ -643,7 +656,7 @@ async function loadJobs() {
     }
     tbody.innerHTML = jobs.map((j) => `
       <tr>
-        <td class="dim">${new Date(j.created_at * 1000).toLocaleTimeString()}</td>
+        <td class="dim" title="${esc(new Date(j.created_at * 1000).toString())}">${stamp(j.created_at)}</td>
         <td>${esc(j.kind)}</td>
         <td>${esc(j.status)}${j.error ? ` <span class="err">${esc(j.error)}</span>` : ""}</td>
         <td class="path dim">${esc(j.source || "")}</td>
