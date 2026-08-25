@@ -320,10 +320,25 @@ def main():
     if not args.no_record:
         from core import artifacts
         job_id = artifacts.new_job_id()
+        # Everything that changes what the run does, not just where it
+        # pointed. Without the ladder flags a record cannot answer "did
+        # this one use cloud escalation?" or "was that scan hashing
+        # everything?" — and the two front ends do not always default the
+        # same way, so the answer is not inferable from the source alone.
         artifacts.write_manifest(job_id, "scan", {
             "source": str(source_path), "base_dir": str(base_dir_path),
             "use_db": args.use_db, "max_files": args.max_files,
             "file_types": args.file_types, "via": "cli",
+            "metadata_only_size": args.metadata_only_size,
+            "hash_workers": args.workers,
+            "skip_duplicates": args.skip_duplicates,
+            "llm_classify": args.llm_classify,
+            "cloud_classify": args.cloud_classify,
+            "cloud_cost_limit_usd": args.cloud_cost_limit,
+            "cloud_model": args.cloud_model,
+            "ai_tagging": args.ai_tagging,
+            "analyze_images": args.analyze_images,
+            "project_roots": not args.no_project_roots,
         })
 
     try:
