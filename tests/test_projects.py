@@ -247,3 +247,75 @@ def test_a_declared_root_is_one_project_whole(tmp_path, monkeypatch):
     finally:
         monkeypatch.setattr(mod, "_config", None)
         mod._is_project_dir.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Backup trees are copies, not projects
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def backupish(tmp_path, monkeypatch):
+    import core.projects as mod
+    config = tmp_path / "rules.yaml"
+    config.write_text(yaml.safe_dump({"project_roots": {
+        "enabled": True, "roots": [], "containers": [],
+        "container_names": [{"PycharmProjects": "Projects"},
+                            {"XCode-42739": "Projects"}],
+        "markers": [".git"], "marker_destination": "Projects",
+        "never_roots": [],
+    }}))
+    monkeypatch.setattr(mod, "CONFIG_PATH", config)
+    monkeypatch.setattr(mod, "_config", None)
+    mod._is_project_dir.cache_clear()
+    yield mod
+    monkeypatch.setattr(mod, "_config", None)
+    mod._is_project_dir.cache_clear()
+
+
+@pytest.mark.parametrize("path,expected", [
+    # Live, and the NAS mirror of it: both real projects.
+    ("/Users/x/PycharmProjects/Foo/a.py", "Foo"),
+    ("/Volumes/homes/x/PycharmProjects/Foo/a.py", "Foo"),
+    # Dated snapshots and restores are copies. 85 of these planned into one
+    # Projects/SENG593/, and the executor would have kept one and dropped 84.
+    ("/V/Data/Restore/Backups/appdata/Host_20251028T061503Z/PycharmProjects/S/a.py", None),
+    ("/V/Data/Restore/PycharmProjects/Foo/a.py", None),
+    ("/V/iMac_Backup/x/PycharmProjects/Foo/a.pdf", None),
+    # Only ancestors count: an Xcode project *named* Backup is still a project.
+    ("/Users/x/Documents/XCode-42739/Backup/Backup.xcodeproj/p.pbxproj", "Backup"),
+])
+def test_backup_trees_are_not_projects(backupish, path, expected):
+    root = backupish.project_root_for(path)
+    assert (root.name if root else None) == expected
+
+
+# ---------------------------------------------------------------------------
+# Colliding project names
+# ---------------------------------------------------------------------------
+
+def test_colliding_names_are_qualified_by_parent(backupish, tmp_path):
+    """Two Unit6 folders under different courses must not merge."""
+    from core.organizer import plan_organization
+    from models.file_info import FileInfo
+
+    paths = [
+        "/V/Edu/Park/2020-U1A-CS225/PycharmProjects/Unit6/main.cpp",
+        "/V/Edu/Park/CS225/PycharmProjects/Unit6/main.cpp",
+    ]
+    infos = [FileInfo(path=Path(p), size=10, type="code") for p in paths]
+    dests = [str(d) for _, d in
+             plan_organization(infos, Path("/out"), source_root=Path("/V"))]
+    assert len(set(dests)) == 2, f"still merged: {dests}"
+    assert all("Unit6" in d for d in dests)
+    assert any("2020-U1A-CS225" in d for d in dests)
+
+
+def test_unique_names_stay_flat(backupish):
+    """Only collisions are qualified; the common case keeps a short path."""
+    from core.organizer import plan_organization
+    from models.file_info import FileInfo
+
+    infos = [FileInfo(path=Path("/V/x/PycharmProjects/Solo/main.py"),
+                      size=10, type="code")]
+    dest = str(plan_organization(infos, Path("/out"), source_root=Path("/V"))[0][1])
+    assert dest == "/out/Projects/Solo/main.py"

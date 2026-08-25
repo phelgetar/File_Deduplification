@@ -137,7 +137,49 @@ def _looks_like_code_project(path: Path, levels: int = 4) -> bool:
     return False
 
 
-def _plan_project_root(file_info: FileInfo, base_dir: Path, project) -> Path:
+def _project_qualifiers(files: List[FileInfo]) -> Dict[str, List[str]]:
+    """Extra path segments for project names that would otherwise collide.
+
+    Project roots are named by their own folder, which is fine until two
+    of them share a name. A real scan produced Unit6 from both
+    ParkUniversity/2020-U1A-CS225/CLionProjects and
+    ParkUniversity/CS225/CLionProjects, and generic leaves — test,
+    configs, cmake-build-debug — collided several ways. Merging them
+    loses files: the executor skips a destination that already exists.
+
+    Only colliding names are touched, so the common case stays flat.
+    The qualifier is the shallowest run of ancestors that tells the
+    colliding roots apart, which keeps Projects/ readable:
+    Projects/2020-U1A-CS225/Unit6 beside Projects/CS225/Unit6.
+    """
+    by_name: Dict[str, set] = {}
+    for file_info in files:
+        project = project_root_for(file_info.path)
+        if project:
+            by_name.setdefault(project.name, set()).add(str(project.root))
+
+    qualifiers: Dict[str, List[str]] = {}
+    for name, roots in by_name.items():
+        if len(roots) < 2:
+            continue
+        for depth in range(1, 4):
+            candidate = {r: [q for q in Path(r).parts[-1 - depth:-1]] for r in roots}
+            if len({tuple(v) for v in candidate.values()}) == len(roots):
+                qualifiers.update({r: v for r, v in candidate.items()})
+                break
+        else:
+            # Still ambiguous after three levels: fall back to the full
+            # parent path, flattened, rather than silently merging them.
+            for r in roots:
+                qualifiers[r] = [str(Path(r).parent).strip("/").replace("/", "_")]
+        logger.info("Project name %r used by %d roots; qualifying with %s",
+                    name, len(roots),
+                    {Path(r).name: qualifiers[r] for r in sorted(roots)})
+    return qualifiers
+
+
+def _plan_project_root(file_info: FileInfo, base_dir: Path, project,
+                       qualifiers: Dict[str, List[str]] = None) -> Path:
     """Everything under a project root, copied verbatim beneath its name.
 
     No category folder and no context folder: the point is that the tree
@@ -148,7 +190,8 @@ def _plan_project_root(file_info: FileInfo, base_dir: Path, project) -> Path:
         relative = file_info.path.resolve().relative_to(project.root)
     except (ValueError, OSError):
         relative = Path(file_info.path.name)
-    return base_dir.joinpath(project.destination, project.name, relative)
+    extra = (qualifiers or {}).get(str(project.root), [])
+    return base_dir.joinpath(project.destination, *extra, project.name, relative)
 
 
 def _category_folder(category: str) -> list:
@@ -211,6 +254,10 @@ def plan_organization(
     # any single file inside it.
     cohesive = _cohesive_units(files, detector)
 
+    # Two project roots can share a leaf name. Deciding that needs the
+    # whole list too, for the same reason.
+    qualifiers = _project_qualifiers(files)
+
     for file_info in files:
         # ====================================================================
         # PRIORITY 0: PROJECT ROOTS (OUTRANKS EVERYTHING)
@@ -222,7 +269,8 @@ def plan_organization(
         # ====================================================================
         project = project_root_for(file_info.path)
         if project:
-            destination = _plan_project_root(file_info, base_dir, project)
+            destination = _plan_project_root(file_info, base_dir, project,
+                                             qualifiers)
             plan.append((file_info, destination))
             logger.debug(f"Project: {project.name} | {file_info.path} → {destination}")
             continue
@@ -341,6 +389,25 @@ def plan_organization(
     return plan
 
 
+def _strip_overlap(subfolders: List[str], tail) -> List[str]:
+    """Drop the tail's leading segments that the destination already spells.
+
+    A file under /private/var/mobile/Applications/ classified as an
+    application was planned into Applications/Applications/… because the
+    category folder and the preserved path both start with the same word.
+    The context planner already removed this; the four
+    structure-preserving planners each did not.
+    """
+    parts = [q for q in Path(tail).parts if q not in ("/", "\\")]
+    overlap = 0
+    for k in range(min(len(subfolders), len(parts)), 0, -1):
+        if ([q.lower() for q in subfolders[-k:]]
+                == [q.lower() for q in parts[:k]]):
+            overlap = k
+            break
+    return parts[overlap:]
+
+
 def _plan_web_project(file_info: FileInfo, base_dir: Path, preserve_root_structure: bool) -> Path:
     """
     Plan organization for web project files, preserving directory structure.
@@ -386,7 +453,8 @@ def _plan_web_project(file_info: FileInfo, base_dir: Path, preserve_root_structu
             subfolders.append(root_folder)
         subfolders.extend(_category_folder("web"))
 
-        destination = base_dir.joinpath(*subfolders, relative_from_web_root)
+        destination = base_dir.joinpath(*subfolders,
+                                     *_strip_overlap(subfolders, relative_from_web_root))
     else:
         # Fallback if web root not found
         subfolders = []
@@ -445,7 +513,8 @@ def _plan_backup_project(file_info: FileInfo, base_dir: Path, preserve_root_stru
             subfolders.append(root_folder)
         subfolders.extend(_category_folder("backup"))
 
-        destination = base_dir.joinpath(*subfolders, relative_from_backup_root)
+        destination = base_dir.joinpath(*subfolders,
+                                     *_strip_overlap(subfolders, relative_from_backup_root))
     else:
         # Fallback if backup root not found
         subfolders = []
@@ -511,7 +580,8 @@ def _plan_code_project(file_info: FileInfo, base_dir: Path, preserve_root_struct
         # Use custom folder mapping for code category
         subfolders.extend(_category_folder("code"))
 
-        destination = base_dir.joinpath(*subfolders, relative_from_code_root)
+        destination = base_dir.joinpath(*subfolders,
+                                     *_strip_overlap(subfolders, relative_from_code_root))
     else:
         # Fallback if code root not found
         subfolders = []
@@ -586,7 +656,8 @@ def _plan_application_project(file_info: FileInfo, base_dir: Path, preserve_root
             subfolders.append(root_folder)
         subfolders.extend(_category_folder("application"))
 
-        destination = base_dir.joinpath(*subfolders, relative_from_app_root)
+        destination = base_dir.joinpath(*subfolders,
+                                     *_strip_overlap(subfolders, relative_from_app_root))
     else:
         # Fallback if app root not found
         subfolders = []

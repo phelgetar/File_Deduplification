@@ -126,6 +126,35 @@ def _marker_destination() -> str:
 
 
 
+# Ancestor directory names that mean "this is a copy of something, kept for
+# history" rather than the thing itself.
+#
+# Without this, matching a container name wherever it appears — which is what
+# catches the NAS mirrors — also matched every dated snapshot. A real scan
+# found 85 daily copies of PycharmProjects/SENG593 under
+# Backups/appdata/Teufelshunde_<timestamp>/, and all 85 planned into one
+# Projects/SENG593/. Executing that keeps whichever snapshot arrives first and
+# silently drops the other 84, because the executor skips a destination that
+# already exists. A backup is not a project; it keeps its own structure and
+# its own snapshot identity under the backup category.
+BACKUP_ANCESTORS = {"restore", "snapshots", ".snapshots", ".snapshot",
+                    "backups.backupdb", "time machine backups", "archives"}
+
+
+def _looks_like_backup_dir(name: str) -> bool:
+    lowered = name.lower()
+    return "backup" in lowered or lowered in BACKUP_ANCESTORS
+
+
+def _inside_backup_tree(root: Path) -> bool:
+    """True when some directory ABOVE this root marks it as a stored copy.
+
+    Only ancestors are examined, never the root itself: XCode-42739/Backup is
+    an Xcode project *named* Backup, and it must stay one.
+    """
+    return any(_looks_like_backup_dir(parent.name) for parent in root.parents)
+
+
 def _never_roots() -> set:
     """Directories that must never be treated as a project root.
 
@@ -249,10 +278,12 @@ def project_root_for(path) -> Optional[ProjectRoot]:
             destination = names.get(part.lower())
             if destination is None:
                 continue
-            name = parts[i + 1]
+            root = Path(*parts[: i + 2])
+            if _inside_backup_tree(root):
+                break        # a stored copy, not the project — fall through
             return ProjectRoot(
-                root=Path(*parts[: i + 2]),
-                name=name,
+                root=root,
+                name=parts[i + 1],
                 destination=destination,
                 reason=f"inside a folder named {part}, which holds "
                        f"one project per folder",
@@ -260,7 +291,8 @@ def project_root_for(path) -> Optional[ProjectRoot]:
 
     # 3. Marker files — the nearest ancestor that looks like a project.
     for parent in candidate.parents:
-        if _plausible_root(parent) and _is_project_dir(str(parent)):
+        if (_plausible_root(parent) and not _inside_backup_tree(parent)
+                and _is_project_dir(str(parent))):
             return ProjectRoot(
                 root=parent,
                 name=parent.name,
