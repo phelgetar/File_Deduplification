@@ -319,3 +319,44 @@ def test_unique_names_stay_flat(backupish):
                       size=10, type="code")]
     dest = str(plan_organization(infos, Path("/out"), source_root=Path("/V"))[0][1])
     assert dest == "/out/Projects/Solo/main.py"
+
+
+def test_build_files_do_not_shatter_a_source_tree(tmp_path, monkeypatch):
+    """swift-master fragmented into 185 "projects" and ffmpeg into 40.
+
+    CMakeLists.txt and Makefile recur at every level of a C tree, so
+    stopping at the nearest one made every subdirectory its own project.
+    The .git that says where the tree begins sits at the top.
+    """
+    import core.projects as mod
+
+    repo = tmp_path / "scripts"
+    deep = repo / "swift-master" / "benchmark" / "scripts"
+    deep.mkdir(parents=True)
+    (repo / ".git").mkdir()
+    for d in (repo / "swift-master", repo / "swift-master" / "benchmark", deep):
+        (d / "CMakeLists.txt").write_text("")
+    (deep / "run.cpp").write_text("x")
+
+    config = tmp_path / "rules.yaml"
+    config.write_text(yaml.safe_dump({"project_roots": {
+        "enabled": True, "roots": [], "containers": [], "container_names": [],
+        "markers": [".git", "CMakeLists.txt"], "marker_destination": "Projects",
+        "never_roots": [],
+    }}))
+    monkeypatch.setattr(mod, "CONFIG_PATH", config)
+    monkeypatch.setattr(mod, "_config", None)
+    mod._is_project_dir.cache_clear()
+    try:
+        root = mod.project_root_for(deep / "run.cpp")
+        assert root is not None and root.root == repo, root.root
+    finally:
+        monkeypatch.setattr(mod, "_config", None)
+        mod._is_project_dir.cache_clear()
+
+
+def test_a_container_still_creates_seams_inside_a_tree(projects):
+    """The escape hatch: declare a container and the sub-projects return."""
+    beta = projects / "Workspaces" / "beta" / "deep" / "nested" / "here" / "thing.txt"
+    root = __import__("core.projects", fromlist=["x"]).project_root_for(beta)
+    assert root is not None and root.name == "beta"

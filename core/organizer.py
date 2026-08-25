@@ -414,7 +414,8 @@ def _strip_overlap(subfolders: List[str], tail) -> List[str]:
     The context planner already removed this; the four
     structure-preserving planners each did not.
     """
-    parts = [q for q in Path(tail).parts if q not in ("/", "\\")]
+    raw = tail if isinstance(tail, (list, tuple)) else Path(tail).parts
+    parts = [q for q in raw if q not in ("/", "\\")]
     overlap = 0
     for k in range(min(len(subfolders), len(parts)), 0, -1):
         if ([q.lower() for q in subfolders[-k:]]
@@ -848,6 +849,13 @@ def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_struc
         # category_position: before_context to get the old layout.
         after = getattr(context, "category_position", "after_context") != "before_context"
 
+        # A category folder that merely repeats the context adds nothing.
+        # A file classified "education" inside the Education context gave
+        # Education/Education/Wright-State-University.
+        if ([q.lower() for q in category_parts]
+                == [q.lower() for q in context_parts]):
+            category_parts = []
+
         if not after:
             subfolders.extend(category_parts)
 
@@ -862,8 +870,13 @@ def _plan_context_based(file_info: FileInfo, base_dir: Path, preserve_root_struc
         if after:
             subfolders.extend(category_parts)
 
-        # Preserve the structure below the matched directory.
-        subfolders.extend(_context_tail(file_info, context) or [file_info.path.name])
+        # Preserve the structure below the matched directory, minus
+        # anything the destination already spells. _context_tail removes
+        # the overlap with the context; the category folder can repeat it
+        # too — Media/Videos/SecurityCameraVideos above a source folder
+        # of the same name gave …/SecurityCameraVideos/SecurityCameraVideos/.
+        tail = _context_tail(file_info, context) or [file_info.path.name]
+        subfolders.extend(_strip_overlap(subfolders, tail))
 
         destination = base_dir.joinpath(*subfolders)
     else:

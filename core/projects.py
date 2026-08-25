@@ -299,16 +299,31 @@ def project_root_for(path) -> Optional[ProjectRoot]:
                        f"one project per folder",
             )
 
-    # 3. Marker files — the nearest ancestor that looks like a project.
+    # 3. Marker files — the OUTERMOST ancestor that looks like a project.
+    #
+    # Not the nearest. Build files recur at every level of a source tree:
+    # swift-master, its benchmark/ and its benchmark/scripts/ each carry a
+    # CMakeLists.txt, and ffmpeg-4.1 carries a Makefile in every one of its
+    # libav* directories. Stopping at the nearest one shattered swift-master
+    # into 185 separate "projects" and ffmpeg into 40, which is the opposite
+    # of what a project root is for — the whole tree is one thing, and the
+    # .git that says so sits at the top.
+    #
+    # The trade is a monorepo whose packages you would rather see
+    # separately; declare those as a container and the seams come back,
+    # since containers are checked first.
+    outermost = None
     for parent in candidate.parents:
         if (_plausible_root(parent) and not _inside_backup_tree(parent)
                 and _is_project_dir(str(parent))):
-            return ProjectRoot(
-                root=parent,
-                name=parent.name,
-                destination=_marker_destination(),
-                reason=f"{parent.name} contains a project marker",
-            )
+            outermost = parent
+    if outermost is not None:
+        return ProjectRoot(
+            root=outermost,
+            name=outermost.name,
+            destination=_marker_destination(),
+            reason=f"{outermost.name} contains a project marker",
+        )
     return None
 
 
