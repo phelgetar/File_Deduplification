@@ -202,12 +202,44 @@ class JobRegistry:
 
     def __init__(self):
         self._jobs: Dict[str, Job] = {}
+        # Directory mtime at the last refresh, so listing costs one stat
+        # when nothing has changed.
+        self._dir_mtime: float = 0.0
         self._lock = threading.Lock()
         # Spawn (the 3.14 default on macOS) keeps the child free of the
         # parent's imported state — notably any inherited DB handles.
         self._ctx = mp.get_context("spawn")
         JOBS_DIR.mkdir(parents=True, exist_ok=True)
         self._load_from_disk()
+
+    def _refresh_from_disk(self) -> None:
+        """Pick up job directories that appeared since we last looked.
+
+        Reading disk only at startup meant a command-line run never
+        showed up in a server that was already running — which defeats
+        the point of recording CLI runs at all. One user's server had
+        been up for ten days and listed 13 jobs against 54 on disk.
+
+        Only unseen directories are read, and only when the directory's
+        own mtime has moved, so the common case is a single stat.
+        """
+        try:
+            stamp = JOBS_DIR.stat().st_mtime
+        except OSError:
+            return
+        if stamp == self._dir_mtime:
+            return
+        self._dir_mtime = stamp
+        for job_dir in JOBS_DIR.glob("*"):
+            if not job_dir.is_dir() or job_dir.name in self._jobs:
+                continue
+            try:
+                job = _job_from_disk(job_dir)
+            except Exception as e:
+                logger.debug("Skipping unreadable job dir %s: %s", job_dir.name, e)
+                continue
+            if job is not None:
+                self._jobs[job.id] = job
 
     def _load_from_disk(self) -> None:
         """Rebuild the job list from what previous runs left on disk.
@@ -232,11 +264,17 @@ class JobRegistry:
             logger.info("Recovered %d job(s) from %s", len(self._jobs), JOBS_DIR)
 
     def get(self, job_id: str) -> Optional[Job]:
+        """A job by id, looking on disk if this process has not seen it."""
         with self._lock:
-            return self._jobs.get(job_id)
+            job = self._jobs.get(job_id)
+            if job is None:
+                self._refresh_from_disk()
+                job = self._jobs.get(job_id)
+            return job
 
     def list(self) -> List[dict]:
         with self._lock:
+            self._refresh_from_disk()
             jobs = sorted(self._jobs.values(), key=lambda j: -j.created_at)
         return [j.summary() for j in jobs]
 
