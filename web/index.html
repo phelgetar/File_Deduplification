@@ -108,6 +108,21 @@ dialog::backdrop { background: rgba(0,0,0,0.55); }
 dialog p { font-size: 13px; }
 .pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 12px; }
 .err { color: var(--danger); font-size: 13px; }
+/* Service status. Colour is never the only signal — the dot carries a
+   shape too, so it still reads for a red/green colour-blind viewer and
+   in a grayscale screenshot. */
+.svcs { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 6px 16px; }
+.svc { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 0; }
+.svc .dot { flex: none; width: 15px; text-align: center; font-size: 11px; line-height: 1; }
+.svc.up   .dot { color: var(--ok); }
+.svc.down .dot { color: var(--danger); }
+.svc.down .lbl { color: var(--danger); }
+.svc .lbl { flex: none; }
+.svc a { color: var(--muted); font: 11px var(--mono); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svc a:hover { color: var(--text); text-decoration: underline; }
+.svc .req { font-size: 10px; color: var(--warn); text-transform: uppercase;
+  letter-spacing: 0.04em; }
 .pathrow { display: flex; gap: 6px; }
 .pathrow input { flex: 1; }
 button.browse { background: var(--panel-2); border: 1px solid var(--border);
@@ -138,6 +153,13 @@ button.browse { background: var(--panel-2); border: 1px solid var(--border);
 <main>
   <!-- ───────────────────────── Run ───────────────────────── -->
   <section class="view on" id="view-run">
+    <div class="card">
+      <h2>Services <span id="svcwhen" class="dim"
+          style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+      <div class="svcs" id="svclist">
+        <div class="empty">Checking…</div>
+      </div>
+    </div>
     <div class="card">
       <h2>Scan</h2>
       <div class="grid">

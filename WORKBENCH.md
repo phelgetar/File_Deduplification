@@ -67,6 +67,35 @@ mid-run, execution refuses to start rather than move files it cannot record.
 
 ---
 
+## Service status
+
+The Run screen opens with every service `start-services.sh` manages — MySQL,
+Ollama, the usaccidents backend and frontend, the Epstein server, the jarheads
+dashboard and scheduler, doc-classifier, and the workbench itself. Green dot for
+up, red triangle for down, refreshed every ten seconds and paused while the tab
+is hidden.
+
+The shape matters as much as the colour: it survives a grayscale screenshot and
+a red/green colour-blind reader.
+
+**MySQL and Ollama are marked `NEEDED`** when they are down, because the
+workbench depends on them — a scan fails without the first and silently skips
+the local classification tier without the second. When a run produces nothing
+useful, this is the first place to look.
+
+The service list is not duplicated here. It is parsed out of
+`start-services.sh`, which already defines each one's port, label and URL —
+a second copy is a copy that drifts. What is not borrowed is the checking:
+`start-services.sh status` takes ~770ms and spawns nine `lsof` processes,
+which is fine to type and far too slow for a panel on a timer. A TCP connect
+to a loopback port answers in ~50ms. The one service with no port is matched
+by working directory, the same way the script does it.
+
+Set `WORKBENCH_SERVICES_SCRIPT` if the script is not at
+`~/PycharmProjects/start-services.sh`. Without it the panel is simply empty.
+
+---
+
 ## What runs in parallel, and why it varies
 
 Each stage is limited by something different (disk, the GIL, the Ollama

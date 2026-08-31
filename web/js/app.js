@@ -801,3 +801,65 @@ $("undobtn").onclick = async () => {
   }
   await refreshPending();
 };
+
+// ───────────────────────── service status ─────────────────────────
+//
+// The workbench is one of nine services on this machine and depends on
+// two of them. When a scan produces nothing useful the cause is often a
+// service that quietly died, and the answer was a terminal away.
+//
+// Polling is deliberately dumb — a fixed interval, one cheap request —
+// but it pauses while the tab is hidden. A background tab that keeps
+// probing nine ports every ten seconds forever is rude to a laptop.
+
+const SERVICE_POLL_MS = 10_000;
+let svcTimer = null;
+
+async function loadServices() {
+  try {
+    const { services, error } = await api("/api/services");
+    if (error || !services.length) {
+      $("svclist").innerHTML =
+        `<div class="empty">${esc(error || "No service definitions found.")}</div>`;
+      $("svcwhen").textContent = "";
+      return;
+    }
+    const down = services.filter((s) => !s.up);
+    $("svclist").innerHTML = services.map((s) => {
+      // A shape as well as a colour, so the state survives a grayscale
+      // screenshot and a red/green colour-blind reader.
+      const dot = s.up ? "●" : "▲";
+      const target = s.url && s.url.startsWith("http")
+        ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>`
+        : `<span class="dim" style="font:11px var(--mono)">${esc(s.url || "")}</span>`;
+      return `<div class="svc ${s.up ? "up" : "down"}" title="${esc(s.label)} — ${s.up ? "up" : "not running"}">
+        <span class="dot">${dot}</span>
+        <span class="lbl">${esc(s.label)}</span>
+        ${s.required && !s.up ? `<span class="req">needed</span>` : ""}
+        ${target}
+      </div>`;
+    }).join("");
+    $("svcwhen").textContent = down.length
+      ? `— ${down.length} down: ${down.map((s) => s.label).join(", ")}`
+      : `— all ${services.length} up, checked ${stamp(Date.now() / 1000).slice(11)}`;
+  } catch (e) {
+    $("svclist").innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+function startServicePolling() {
+  if (svcTimer) clearInterval(svcTimer);
+  loadServices();
+  svcTimer = setInterval(loadServices, SERVICE_POLL_MS);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    clearInterval(svcTimer);
+    svcTimer = null;
+  } else if (!svcTimer) {
+    startServicePolling();          // and refresh immediately on return
+  }
+});
+
+startServicePolling();

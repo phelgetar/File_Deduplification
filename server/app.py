@@ -167,6 +167,22 @@ def api_fs_dirs(path: str = "/"):
         raise HTTPException(400, str(e))
 
 
+@app.get("/api/services")
+def api_services():
+    """Up/down for every service start-services.sh manages.
+
+    Probed here rather than by shelling out: `start-services.sh status`
+    takes ~770ms and spawns nine lsof processes, which is fine to type
+    and far too slow for a panel on a timer. This answers in ~50ms.
+    """
+    try:
+        from core.services import status
+        return {"services": status()}
+    except Exception as e:
+        logger.debug("service status unavailable: %s", e)
+        return {"services": [], "error": str(e)}
+
+
 @app.get("/api/file-types")
 def api_file_types():
     try:

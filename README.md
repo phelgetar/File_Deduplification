@@ -152,6 +152,9 @@ that preserved.
 - Metadata sidecars recording each file's origin
 - Every run recorded under `.workbench/jobs/`, browsable and executable later from the web UI
 
+**Awareness**
+- **Service status panel** in the web UI — every service `start-services.sh` manages, green for up and red for down, refreshed every 10s. The list is read *from* the script rather than copied, so it cannot drift; MySQL and Ollama are flagged as the two the workbench itself needs
+
 **Safety**
 - Mount preflight that checks `ismount()`, not merely that the path exists
 - Database circuit breaker — execution stops rather than continuing unlogged
@@ -531,6 +534,7 @@ File_Deduplification/
 │   ├── deduplicator.py      # Duplicate detection
 │   ├── classifier.py        # Path, extension and MIME classification
 │   ├── rules.py             # The only reader of config/rules.yaml
+│   ├── services.py          # Is the rest of the local dev stack up?
 │   ├── projects.py          # Project roots — trees kept whole
 │   ├── organizer.py         # Folder structure planning
 │   ├── previewer.py         # Dry-run previews
