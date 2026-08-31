@@ -144,6 +144,7 @@ that preserved.
 - **Cloud escalation** (`--cloud-classify`) to Claude for what neither could place, under a hard dollar ceiling
 - **Image metadata** (`--analyze-images`) — EXIF, dimensions, camera, GPS
 - **Image content tagging** (`--ai-tagging`) — objects, scenes, people, locations
+- **Video to text** — `ffprobe` metadata plus a captioned, OCR'd midpoint frame, so a clip becomes searchable. Needs `brew install ffmpeg`; reached today by the cloud tier only (see [WORKBENCH.md](WORKBENCH.md))
 
 **Planning and execution**
 - Project roots, semantic contexts and captured folders, in the order described above
@@ -434,6 +435,14 @@ pip install -r requirements-ai.txt
 ```
 The app runs fine without these — image content tagging is skipped when they're absent.
 
+For turning **video** into searchable text (`ffprobe` metadata plus a captioned
+midpoint frame):
+```bash
+brew install ffmpeg
+```
+Also optional. Without it a video is still classified and filed by extension;
+only its contents go undescribed.
+
 ---
 
 ## 🔐 .env Configuration
@@ -482,6 +491,7 @@ Set these in the shell for one run, or export them permanently.
 | `WORKBENCH_NO_AUTOMOUNT=1` | Skip the mount preflight entirely. |
 | `WORKBENCH_MOUNT_HOST` | Server to mount the required shares from (default `canome`). |
 | `WORKBENCH_MOUNT_SCHEME` | `smb` (default), `afp` or `nfs`. |
+| `WORKBENCH_FFPROBE`, `WORKBENCH_FFMPEG` | Paths to the ffmpeg binaries, when they are not on `PATH`. |
 
 ---
 
@@ -537,6 +547,7 @@ File_Deduplification/
 ├── classify/                # Content extraction + classification ladder
 │   ├── extract.py           # Any supported file -> plain text
 │   ├── vision.py            # Image -> caption + OCR + EXIF
+│   ├── video.py             # Video -> ffprobe metadata + captioned frame
 │   ├── engine.py            # Rules -> local LLM -> cloud escalation
 │   └── cloud.py             # Claude tier, with a hard spend cap
 ├── search/                  # RAG index + user metadata

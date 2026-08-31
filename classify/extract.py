@@ -1,7 +1,10 @@
 #
-# Ported verbatim from doc-classifier/extract.py when that project was
-# merged into File_Deduplification (2026-08-17). Unchanged so that fixes
-# can still be diffed against the original.
+# Ported from doc-classifier/extract.py when that project was merged into
+# File_Deduplification (2026-08-17), and kept byte-identical so fixes
+# could be diffed against the original. That assumption expired: the
+# original reached v1.1.0 with video support on 2026-08-30 while this
+# copy sat at v1.0.0, so the workbench could file a .mp4 correctly and
+# knew nothing about what was in it. Brought level on 2026-08-25.
 #
 #!/usr/bin/env python3
 #
@@ -17,10 +20,12 @@
 # Author: Tim Canady
 # Created: 2026-06-17
 #
-# Version: 1.0.0
-# Last Modified: 2026-06-17 by Tim Canady
+# Version: 1.1.0
+# Last Modified: 2026-08-25 by Tim Canady
 #
 # Revision History:
+# - 1.1.0 (2026-08-25): Video support (.mov/.mp4/…): ffprobe metadata plus a
+#   captioned, OCR'd midpoint frame, via classify/video.py — Tim Canady
 # - 1.0.0 (2026-06-17): Initial version
 ###################################################################
 #
@@ -44,6 +49,12 @@ from pathlib import Path
 PLAINTEXT_SUFFIXES = {".txt", ".md", ".markdown", ".log", ".rst", ".xml"}
 
 # Image formats: turned into text (caption + OCR + EXIF) via vision.py
+# Video formats: turned into text (ffprobe metadata + a captioned midpoint
+# frame) via classify/video.py, imported lazily like the vision pipeline so
+# the text-only path never needs ffmpeg.
+VIDEO_SUFFIXES = {".mov", ".mp4", ".m4v", ".avi", ".mkv",
+                  ".webm", ".mpg", ".mpeg", ".wmv"}
+
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".heic", ".heif",
                   ".gif", ".webp", ".tiff", ".bmp"}
 
@@ -72,6 +83,8 @@ def extract_text(path: str | Path) -> str:
         return _from_xlsx(path)
     if suffix == ".pdf":
         return _from_pdf(path)
+    if suffix in VIDEO_SUFFIXES:
+        return _from_video(path)
     if suffix in IMAGE_SUFFIXES:
         return _from_image(path)
     if suffix in {".doc", ".ppt", ".xls"}:
@@ -154,6 +167,19 @@ def _from_pdf(path: Path) -> str:
             "(Tesseract binary is already on this machine)."
         )
     return text
+
+
+def _from_video(path: Path) -> str:
+    # Imported lazily so the text-only pipeline never needs ffmpeg or the
+    # vision model just to read a .docx.
+    from classify.video import describe_video
+
+    try:
+        return describe_video(path)
+    except Exception as e:
+        raise ExtractionError(
+            f"Could not describe video '{path.name}': {e}"
+        ) from e
 
 
 def _from_image(path: Path) -> str:

@@ -139,6 +139,29 @@ Needs `ANTHROPIC_API_KEY` (or `ant auth login`). Without a credential the tier
 disables itself and the run continues on the free tiers. Default model is
 `claude-opus-5`; override with `--cloud-model` or `CLOUD_MODEL`.
 
+### Turning a file into text
+
+The tiers above judge a file; `classify/extract.py` is what gives them
+something to read. Word, PowerPoint, Excel, PDF and plain text go straight to
+their text. An image goes through `classify/vision.py` — a caption from the
+local vision model, plus OCR and EXIF.
+
+A **video** goes through `classify/video.py`: `ffprobe` for duration,
+resolution, codec, recording date, camera and GPS, then one frame from the
+midpoint, captioned and OCR'd by the same vision pipeline. Each part degrades
+on its own — metadata without a caption if the vision model is down, a caption
+without metadata if `ffprobe` chokes — and only a file yielding neither is an
+error.
+
+Needs the ffmpeg suite (`brew install ffmpeg`). The binaries are looked up on
+`PATH`; override with `WORKBENCH_FFPROBE` and `WORKBENCH_FFMPEG`.
+
+**Today this is reached only by the cloud tier**, which is the one path that
+reads file contents. A `.mp4` is classified as video by its extension and
+never needs escalating, so a normal scan files it correctly without describing
+it. Broad video indexing arrives with the search work, which will call
+`extract_text` over everything.
+
 ---
 
 ## Layout
@@ -150,6 +173,7 @@ core/main.py         CLI: argument parsing and terminal output only
 
 classify/extract.py  any supported file -> plain text
 classify/vision.py   image -> caption + OCR + EXIF
+classify/video.py    video -> ffprobe metadata + captioned midpoint frame
 classify/engine.py   the rules -> local -> cloud ladder
 classify/cloud.py    the Claude tier, with the spend cap
 
