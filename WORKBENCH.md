@@ -21,7 +21,19 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./.venv/bin/python -m server.app
 ```
 
-It prints the URL — the first free port from 8000 — and binds to localhost only.
+It prints the URL (the first free port from 8000, or from `--port N`) and binds
+to localhost only.
+
+On this machine the normal way to run it is the machine-wide dev-services
+script, which pins it to a stable address so it never races the other local
+servers (doc-classifier also auto-ports from 8000):
+
+```bash
+~/PycharmProjects/start-services.sh start workbench   # http://127.0.0.1:8010
+~/PycharmProjects/start-services.sh stop fw           # shorthands: workbench, fw, dedup
+```
+
+Logs go to `~/Library/Logs/dev-services/file-workbench.log`.
 
 The CLI still works exactly as before, and drives the same pipeline:
 
@@ -40,9 +52,9 @@ tested against.
 | Screen | What it is for |
 |---|---|
 | **Run** | Choose a source and destination, pick options, and watch each stage report throughput and ETA as it goes. Cancel any time; completed work is kept. |
-| **Duplicates** | Groups by content hash, largest reclaimable space first. Tick the copies to keep (one or more) and save — the group is settled, disappears from review, and future runs apply the decision automatically. |
+| **Duplicates** | Groups by content hash, largest reclaimable space first. Tick the copies to keep (one or more) and save; the group is settled, disappears from review, and future runs apply the decision automatically. |
 | **Dup Trees** | The whole database's duplicates as a navigable directory tree: drill into any folder, see duplicate ratios, sizes, and which other trees hold the originals. Aggregations compute in the background and cache for 15 minutes. |
-| **Plan** | Every proposed move, paginated and filterable by path or category. This is the review step — nothing has been written yet. |
+| **Plan** | Every proposed move, paginated and filterable by path or category. This is the review step; nothing has been written yet. |
 | **Jobs** | Every run this session. Reopen one to review its plan or execute it later. |
 
 ### Nothing is written until you say so
@@ -57,8 +69,8 @@ mid-run, execution refuses to start rather than move files it cannot record.
 
 ## What runs in parallel, and why it varies
 
-Each stage is limited by something different — disk, the GIL, the Ollama
-server, or the GPU — so a single worker count would be wrong for most of them.
+Each stage is limited by something different (disk, the GIL, the Ollama
+server, or the GPU), so a single worker count would be wrong for most of them.
 `core/parallel.py` holds one policy table:
 
 ```bash
@@ -80,7 +92,7 @@ Two things are worth understanding before tuning anything:
 
 **A process pool is not free, and not always a win.** Worker startup and the
 pickle round-trip cost real time. On deliberately expensive work, pooling gives
-about **8x**. On trivial per-file work it *loses* — forcing a pool over 8,000
+about **8x**. On trivial per-file work it *loses*; forcing a pool over 8,000
 tiny files turned a 0.12s stage into 0.27s. So the pool is not built blindly: a
 short serial sample measures the actual per-item cost, and the pool is only
 created when that cost justifies it. Cheap stages stay serial on purpose.
@@ -108,10 +120,10 @@ WORKBENCH_HASH_WORKERS=32 ./.venv/bin/python main.py ...
 Three tiers, cheapest first, each seeing only what the tier below could not
 place:
 
-1. **Rules** — `core/classifier.py`. Free, instant, handles the bulk.
-2. **Local LLM** — `--llm-classify`. Free, needs a running Ollama
+1. **Rules**: `core/classifier.py`. Free, instant, handles the bulk.
+2. **Local LLM**: `--llm-classify`. Free, needs a running Ollama
    (`ollama serve`). Configured by `OLLAMA_HOST` and `LLM_MODEL`.
-3. **Cloud** — `--cloud-classify`. The only tier that costs money, so it runs
+3. **Cloud**: `--cloud-classify`. The only tier that costs money, so it runs
    last and only on the leftovers.
 
 The cloud tier is bounded rather than open-ended. It prices the batch before
@@ -133,7 +145,7 @@ disables itself and the run continues on the free tiers. Default model is
 
 ```
 core/parallel.py     per-stage execution policy (the table above)
-core/pipeline.py     the pipeline as a library — the CLI and server both call this
+core/pipeline.py     the pipeline as a library; the CLI and server both call this
 core/main.py         CLI: argument parsing and terminal output only
 
 classify/extract.py  any supported file -> plain text
@@ -153,7 +165,7 @@ web/js/app.js        front-end logic, reconnect-safe event stream
 ```
 
 `core/main.py` is a thin wrapper over `core/pipeline.py`, and the server drives
-the same function — so the terminal and the browser cannot drift apart.
+the same function, so the terminal and the browser cannot drift apart.
 
 ---
 
@@ -164,7 +176,7 @@ the same function — so the terminal and the browser cannot drift apart.
 | Files, classifications, operations, tags | MySQL | Already holds millions of rows; resume depends on it |
 | RAG vectors and chunks | `rag_index.npy` / `.json` | In-memory numpy search beats BLOB comparison at this scale |
 | User metadata | `user_metadata.json` | Kept separate so it survives a reindex |
-| Per-job plans and results | `.workbench/jobs/<id>/` | Run output, not source — gitignored |
+| Per-job plans and results | `.workbench/jobs/<id>/` | Run output, not source; gitignored |
 
 The database is optional (`--use-db`), but resume, tagging, and image metadata
 all depend on it.
@@ -175,7 +187,7 @@ all depend on it.
 
 - **Point `--base-dir` outside the tree you are scanning.** Organizing a folder
   into itself is the one reliable way to make a mess.
-- **Interrupted runs resume** when the database is on — re-run the same command
+- **Interrupted runs resume** when the database is on; re-run the same command
   and completed hashes are skipped.
 - **The database is a hard dependency for execution logging.** If it dies
   mid-run, the circuit breaker trips and execution is refused rather than
