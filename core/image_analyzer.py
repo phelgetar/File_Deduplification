@@ -17,10 +17,13 @@
 # Author: Tim Canady
 # Created: 2025-11-14
 #
-# Version: 1.0.0
-# Last Modified: 2025-11-14 by Tim Canady
+# Version: 1.1.0
+# Last Modified: 2026-09-13 by Tim Canady
 #
 # Revision History:
+# - 1.1.0 (2026-09-13): Register pillow_heif so PIL opens HEIC in this
+#   module's own worker processes; HEIC success previously depended on which
+#   worker happened to import a module that registered it (Tim Canady)
 # - 1.0.0 (2025-11-14): Initial image metadata analyzer — Tim Canady
 ###################################################################
 
@@ -38,6 +41,19 @@ try:
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
+
+# HEIC/HEIF support. Without this registration PIL raises "cannot identify
+# image file" on every .HEIC. Registration is process-global, and this module
+# runs in its own worker processes (image_meta stage), so it cannot rely on
+# image_content_analyzer or classify/vision having registered it first: which
+# worker had it depended on import order, making the same file succeed in one
+# worker and fail in another.
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    HEIF_AVAILABLE = True
+except ImportError:
+    HEIF_AVAILABLE = False
 
 try:
     from PIL import IptcImagePlugin
@@ -331,6 +347,12 @@ class ImageAnalyzer:
     def _extract_gps(self, gps_info, metadata: ImageMetadata):
         """Extract GPS coordinates from EXIF GPS data."""
         try:
+            # On some files (HEIC especially) PIL hands back the raw IFD
+            # OFFSET (an int) instead of the parsed dict. There is nothing to
+            # decode from an offset alone; treat it as "no GPS" rather than
+            # logging an error for every such photo.
+            if not hasattr(gps_info, 'items'):
+                return
             gps_data = {}
             for tag_id, value in gps_info.items():
                 tag_name = GPSTAGS.get(tag_id, tag_id)

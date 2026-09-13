@@ -13,10 +13,16 @@
 # Author: Tim Canady
 # Created: 2025-09-28
 #
-# Version: 0.8.0
-# Last Modified: 2026-07-20 by Tim Canady
+# Version: 0.9.0
+# Last Modified: 2026-09-13 by Tim Canady
 #
 # Revision History:
+# - 0.9.0 (2026-09-13): Ignore patterns now actually prune the walk: plain
+#   directories are tested against .dedupignore before descending, absolute
+#   directory patterns cover everything beneath them, and **/x/** patterns
+#   match full paths instead of basenames (all three were inert before, which
+#   is how a scan of ~/ walked 900k files of ~/Library). Apple media library
+#   packages (.photoslibrary etc.) are now atomic (Tim Canady)
 # - 0.8.0 (2026-07-20): Added periodic scan progress heartbeat (every 10s) so long walks over network volumes are not silent — Tim Canady
 # - 0.7.1 (2025-11-21): Added .framework to atomic packages, improved timeout error handling — Tim Canady
 # - 0.7.0 (2025-11-14): Added comprehensive disk image support (.iso, .img, .vhd, .vmdk, .vdi, .ova, .ovf, .toast, .cdr, .nrg, .mds, .mdf) — Tim Canady
@@ -123,16 +129,24 @@ def should_ignore(file_path, ignore_patterns):
     file_name = file_path.name
 
     for pattern in ignore_patterns:
-        # Check absolute path patterns
+        # Absolute path patterns. A directory pattern covers everything
+        # beneath it: "/Users/x/Library" must also ignore
+        # "/Users/x/Library/Mail/whatever". The old exact-match-only rule
+        # matched nothing under the directory, so the pattern was inert.
         if pattern.startswith('/'):
-            # Handle wildcard at end (e.g., /path/to/dir*)
             if pattern.endswith('*'):
                 if file_str.startswith(pattern[:-1]):
                     return True
-            # Exact absolute path match
-            elif file_str == pattern:
+            elif file_str == pattern or file_str.startswith(pattern + '/'):
                 return True
-        # Check glob patterns (*.tmp, *.mp4, etc.)
+        # Patterns containing a slash (e.g. **/Backups/**) match the FULL
+        # path. fnmatch's * crosses '/' freely, so ** behaves as intended.
+        # The trailing-slash probe lets "**/Backups/**" also match the
+        # Backups directory itself, so the walk can prune it.
+        elif '/' in pattern:
+            if fnmatch(file_str, pattern) or fnmatch(file_str + '/', pattern):
+                return True
+        # Bare patterns (*.tmp, Icon) match against the basename only.
         elif fnmatch(file_name, pattern):
             return True
 
@@ -167,7 +181,12 @@ def is_atomic_package(path):
         '.ova', '.ovf',                         # Virtual appliances
         '.toast', '.cdr',                       # macOS disk images
         '.nrg',                                 # Nero disk images
-        '.mds', '.mdf'                          # Media Descriptor Files
+        '.mds', '.mdf',                         # Media Descriptor Files
+        # Apple media library packages: their internals are app-managed
+        # databases, thumbnails, and proxy caches (tens of thousands of tiny
+        # files per library). Treat the package as one object; never walk in.
+        '.photoslibrary', '.migratedphotolibrary',
+        '.musiclibrary', '.tvlibrary', '.aplibrary'
     }
     return path.suffix.lower() in atomic_extensions
 
@@ -256,14 +275,19 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
                                     dirs_to_remove.append(dirname)
                                     continue
 
+                                # Prune ignored directories BEFORE descending.
+                                # Previously only files and atomic packages
+                                # were tested, so a directory ignore pattern
+                                # never stopped the walk.
+                                if should_ignore(dir_path, ignore_patterns):
+                                    ignored_count += 1
+                                    dirs_to_remove.append(dirname)
+                                    continue
+
                                 # Check if this is an atomic package
                                 if is_atomic_package(dir_path):
                                     # Don't descend into atomic packages
                                     dirs_to_remove.append(dirname)
-
-                                    if should_ignore(dir_path, ignore_patterns):
-                                        ignored_count += 1
-                                        continue
 
                                     results.append(dir_path)
                                     processed_paths.add(dir_path)
@@ -353,14 +377,20 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
                             dirs_to_remove.append(dirname)
                             continue
 
+                        # Prune ignored directories BEFORE descending.
+                        # Previously only files and atomic packages were
+                        # tested, so a directory ignore pattern never
+                        # stopped the walk (this is how a scan of ~/ walked
+                        # all of ~/Library despite the ignore entry).
+                        if should_ignore(dir_path, ignore_patterns):
+                            ignored_count += 1
+                            dirs_to_remove.append(dirname)
+                            continue
+
                         # Check if this is an atomic package
                         if is_atomic_package(dir_path):
                             # Don't descend into atomic packages
                             dirs_to_remove.append(dirname)
-
-                            if should_ignore(dir_path, ignore_patterns):
-                                ignored_count += 1
-                                continue
 
                             results.append(dir_path)
                             processed_paths.add(dir_path)
