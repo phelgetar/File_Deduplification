@@ -47,17 +47,56 @@ def detect_duplicates(files: List[FileInfo], use_db: bool = False) -> List[FileI
     EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
     empty_skipped = 0
+    symlink_skipped = 0
+    same_inode_skipped = 0
+
+    # Paths already seen at this (device, inode). Two of them are ONE
+    # file: a hardlink, or an APFS clone sharing its blocks. They hash
+    # identically because they are the same bytes, and calling the
+    # second one a duplicate promises space that deleting cannot return
+    # — unlinking one name leaves the data in place under the other.
+    seen_identity = {}
+
     for file_info in files:
-        # Skip metadata-only files (no hash)
-        if file_info.hash == "METADATA_ONLY":
+        # No full hash, so nothing to compare.
+        #   METADATA_ONLY  too large to read, by --metadata-only-size
+        #   SAMPLE_ONLY    proved unique by its first and last 64 KB plus
+        #                  its size, so the middle was never read
+        if file_info.hash in ("METADATA_ONLY", "SAMPLE_ONLY"):
+            continue
+
+        # A symlink is a link, not content. Recorded, never compared.
+        if file_info.hash == "SYMLINK":
+            symlink_skipped += 1
             continue
 
         if file_info.hash == EMPTY_SHA256 or file_info.size == 0:
             empty_skipped += 1
             continue
 
+        dev = getattr(file_info, "dev", None)
+        inode = getattr(file_info, "inode", None)
+        if dev is not None and inode is not None:
+            key = (dev, inode)
+            first = seen_identity.get(key)
+            if first is not None:
+                # Same file, second name. Mark the relationship so the UI
+                # can show it, but never offer it as reclaimable.
+                file_info.is_duplicate = False
+                file_info.original_path = first.path
+                same_inode_skipped += 1
+                continue
+            seen_identity[key] = file_info
+
         hash_groups[file_info.hash].append(file_info)
 
+    if symlink_skipped:
+        logging.info(f"  ⏭️  {symlink_skipped:,} symlinks excluded (a link is not "
+                     f"a copy of what it points at)")
+    if same_inode_skipped:
+        logging.info(f"  ⏭️  {same_inode_skipped:,} paths share a device and inode "
+                     f"with one already counted (hardlink or clone: the same "
+                     f"bytes under another name, so deleting reclaims nothing)")
     if empty_skipped:
         logging.info(f"  ⏭️  {empty_skipped:,} zero-byte files excluded from "
                      f"duplicate grouping (identical by definition, and worth "
@@ -202,7 +241,7 @@ def report_duplicates(files: List[FileInfo], output_file: str = None):
     hash_groups = defaultdict(list)
 
     for file_info in files:
-        if file_info.hash != "METADATA_ONLY":
+        if file_info.hash not in ("METADATA_ONLY", "SAMPLE_ONLY"):
             hash_groups[file_info.hash].append(file_info)
 
     # Find duplicate groups

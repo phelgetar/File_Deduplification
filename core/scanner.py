@@ -37,6 +37,7 @@
 from pathlib import Path
 import logging
 import os
+import stat
 import time
 from fnmatch import fnmatch
 
@@ -152,6 +153,44 @@ def should_ignore(file_path, ignore_patterns):
 
     return False
 
+def link_record(path):
+    """(path, target) if this is a symlink, else None.
+
+    A symlink is not a file and must never be handed to the hasher.
+    Following them is what read one Pictures library as 488 separate
+    44 GB objects: every sandboxed app has
+    ~/Library/Containers/<id>/Data/Pictures pointing at the same place,
+    and os.walk classifies a link it cannot resolve as a FILE, so it
+    went straight into the results with no check that it was one.
+
+    The target is recorded rather than discarded, because "this path is
+    a link to that path" is a fact worth keeping in the inventory.
+    """
+    try:
+        if not path.is_symlink():
+            return None
+    except OSError:
+        return None
+    try:
+        target = os.readlink(path)
+    except OSError:
+        target = ""
+    return (path, target)
+
+
+def is_regular_file(path):
+    """True only for an ordinary file.
+
+    os.walk puts anything that is not a directory into `filenames`,
+    which includes sockets, fifos, device nodes and unresolvable
+    symlinks. Opening any of those either fails or blocks forever.
+    """
+    try:
+        return stat.S_ISREG(os.lstat(path).st_mode)
+    except OSError:
+        return False
+
+
 def is_atomic_package(path):
     """
     Check if path is an atomic package that should not be scanned internally.
@@ -191,7 +230,8 @@ def is_atomic_package(path):
     return path.suffix.lower() in atomic_extensions
 
 
-def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupignore", allowed_extensions=None):
+def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupignore",
+                   allowed_extensions=None, symlinks_out=None):
     """
     Scan directory for files, optionally filtering by root-level directory names and file types.
 
@@ -231,6 +271,8 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
     ignored_count = 0
     hidden_count = 0
     atomic_package_count = 0
+    symlink_count = 0
+    irregular_count = 0
 
     # Track paths we've already processed to avoid duplicates
     processed_paths = set()
@@ -284,6 +326,17 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
                                     dirs_to_remove.append(dirname)
                                     continue
 
+                                # A symlinked directory is a link. Recording it
+                                # and pruning it is what stops the walk (and
+                                # later rglob) from leaving this tree.
+                                link = link_record(dir_path)
+                                if link is not None:
+                                    if symlinks_out is not None:
+                                        symlinks_out.append(link)
+                                    symlink_count += 1
+                                    dirs_to_remove.append(dirname)
+                                    continue
+
                                 # Check if this is an atomic package
                                 if is_atomic_package(dir_path):
                                     # Don't descend into atomic packages
@@ -325,6 +378,19 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
                                     if allowed_extensions is not None:
                                         if file_path.suffix.lower() not in allowed_extensions:
                                             continue
+
+                                    # Not every entry os.walk calls a file is
+                                    # one: sockets, fifos, device nodes and
+                                    # unresolvable symlinks all land here.
+                                    link = link_record(file_path)
+                                    if link is not None:
+                                        if symlinks_out is not None:
+                                            symlinks_out.append(link)
+                                        symlink_count += 1
+                                        continue
+                                    if not is_regular_file(file_path):
+                                        irregular_count += 1
+                                        continue
 
                                     results.append(file_path)
                                     processed_paths.add(file_path)
@@ -387,6 +453,15 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
                             dirs_to_remove.append(dirname)
                             continue
 
+                        # A symlinked directory is a link, not a tree.
+                        link = link_record(dir_path)
+                        if link is not None:
+                            if symlinks_out is not None:
+                                symlinks_out.append(link)
+                            symlink_count += 1
+                            dirs_to_remove.append(dirname)
+                            continue
+
                         # Check if this is an atomic package
                         if is_atomic_package(dir_path):
                             # Don't descend into atomic packages
@@ -428,6 +503,16 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
                                 if file_path.suffix.lower() not in allowed_extensions:
                                     continue
 
+                            link = link_record(file_path)
+                            if link is not None:
+                                if symlinks_out is not None:
+                                    symlinks_out.append(link)
+                                symlink_count += 1
+                                continue
+                            if not is_regular_file(file_path):
+                                irregular_count += 1
+                                continue
+
                             results.append(file_path)
                             processed_paths.add(file_path)
 
@@ -454,6 +539,14 @@ def scan_directory(root, filter_names=None, max_files=None, ignore_file=".dedupi
 
     if atomic_package_count > 0:
         logger.info(f"Found {atomic_package_count} atomic packages (.app, .framework, .pkg, .dmg) treated as single units")
+
+    if symlink_count:
+        logger.info(f"Recorded {symlink_count:,} symlinks as links and did not "
+                    f"follow them (following one Pictures link per sandboxed "
+                    f"app previously read 21.47 TB of the same library)")
+    if irregular_count:
+        logger.info(f"Skipped {irregular_count:,} entries that are not regular "
+                    f"files (sockets, fifos, device nodes)")
 
     elapsed = time.monotonic() - scan_start
     logger.info(

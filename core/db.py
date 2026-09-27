@@ -148,6 +148,20 @@ class File(Base):
     is_duplicate = Column(Boolean, default=False)
     duplicate_of = Column(String(767))  # Match path length
     scanned_at = Column(DateTime, default=datetime.utcnow)
+
+    # A symlink is recorded, never followed: path plus where it points,
+    # with hash = 'SYMLINK'. Following them read one Pictures library as
+    # 488 separate 44 GB files.
+    link_target = Column(String(767))
+
+    # Device and inode. Two paths sharing both are one file on disk, by
+    # hardlink or APFS clone, so deleting the "duplicate" reclaims nothing.
+    dev = Column(BigInteger)
+    inode = Column(BigInteger)
+
+    # First 64 KB + last 64 KB + size. Files differing at either end
+    # cannot be identical, so the full read is only needed on a collision.
+    sample_hash = Column(String(128))
     # Removed relationship - not needed since we query directly by file_id
 
 
@@ -209,20 +223,96 @@ def init_db():
     Base.metadata.create_all(engine)
 
 @_db_guard(default=None)
-def cache_file_entry(path, size, mtime, hash_val, metadata_only=False):
+def cache_file_entry(path, size, mtime, hash_val, metadata_only=False,
+                     dev=None, inode=None, sample=None, link_target=None):
     with Session() as session:
         file = session.query(File).filter_by(path=str(path)).first()
         if not file:
-            file = File(path=str(path), size=size, mtime=mtime, hash=hash_val, metadata_only=metadata_only)
+            file = File(path=str(path), size=size, mtime=mtime, hash=hash_val,
+                        metadata_only=metadata_only)
         else:
             file.hash = hash_val
             file.size = size
             file.mtime = mtime
             file.metadata_only = metadata_only
             file.scanned_at = datetime.utcnow()
+        # Only overwrite when we actually measured something. A cache hit
+        # skips the read, so it has no identity or sample to report, and
+        # must not blank out what an earlier full read recorded.
+        if dev is not None:
+            file.dev = dev
+        if inode is not None:
+            file.inode = inode
+        if sample is not None:
+            file.sample_hash = sample
+        if link_target is not None:
+            file.link_target = link_target
         session.add(file)
         session.commit()
         return file
+
+
+@_db_guard(default={})
+def get_recorded_hashes(paths):
+    """{path: hash} for the paths given, in as few queries as possible.
+
+    Used by the pre-delete check, which needs to compare what is on disk
+    now against what was recorded when the decision was made.
+    """
+    out = {}
+    paths = list(paths)
+    for i in range(0, len(paths), 500):
+        chunk = [str(p) for p in paths[i:i + 500]]
+        with Session() as session:
+            for path, digest in session.query(File.path, File.hash).filter(
+                    File.path.in_(chunk)).all():
+                out[path] = digest
+    return out
+
+
+@_db_guard(default=True)
+def sample_hash_exists(size, sample, exclude_path):
+    """Is there another file already recorded with this size and ends?
+
+    Defaults to True on any database trouble, because the caller uses
+    this to decide whether it is safe to SKIP reading a file. Guessing
+    "yes, something matches" costs one full read; guessing "no" would
+    silently miss a duplicate.
+    """
+    with Session() as session:
+        return session.query(File.id).filter(
+            File.sample_hash == sample,
+            File.size == size,
+            File.path != str(exclude_path),
+        ).first() is not None
+
+
+@_db_guard(default=0)
+def record_symlinks(links):
+    """Record symlinks as links: path, where it points, no hash.
+
+    Following them is what read one Pictures library as 488 separate
+    44 GB objects. They are still worth knowing about, so they go in the
+    inventory with hash = 'SYMLINK' and a target, and nothing downstream
+    treats them as content.
+    """
+    written = 0
+    with Session() as session:
+        for path, target in links:
+            row = session.query(File).filter_by(path=str(path)).first()
+            if row is None:
+                row = File(path=str(path), size=0, hash="SYMLINK")
+            row.hash = "SYMLINK"
+            row.size = 0
+            row.metadata_only = False
+            row.is_duplicate = False
+            row.duplicate_of = None
+            row.link_target = str(target)[:767]
+            row.scanned_at = datetime.utcnow()
+            session.add(row)
+            written += 1
+        session.commit()
+    return written
 
 @_db_guard(default={})
 def get_duplicate_resolutions():

@@ -30,6 +30,29 @@ confidence_threshold: 0.20
 categories:
 
   # ========================================================================
+  # DOCUMENTS / TEXT GRAPHICS
+  # ========================================================================
+  # Gives scanned pages, screenshots, memes, posters, and infographics a
+  # correct place to land. Without this, text-heavy images leak into
+  # whatever photo category they vaguely resemble (e.g. a survival
+  # infographic tagging as "military").
+  documents:
+    enabled: true
+    descriptions:
+      - "a scanned document"
+      - "a page of printed text"
+      - "an infographic with text and icons"
+      - "a poster with text"
+      - "a screenshot of a computer screen"
+      - "a chart or diagram"
+      - "a handwritten note"
+      - "a form or paperwork"
+      - "a meme with text"
+      - "a presentation slide"
+    keywords:
+      - "document"
+
+  # ========================================================================
   # MILITARY
   # ========================================================================
   military:

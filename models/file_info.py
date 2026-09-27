@@ -12,10 +12,11 @@
 # Author: Tim Canady
 # Created: 2025-09-28
 #
-# Version: 0.1.0
-# Last Modified: 2025-11-04 by Tim Canady
+# Version: 0.2.0
+# Last Modified: 2026-09-26 by Tim Canady
 #
 # Revision History:
+# - 0.2.0 (2026-09-26): Added dev/inode identity, sample_hash and link_target — Tim Canady
 # - 0.1.0 (2025-11-04): Initial version — Tim Canady
 ###################################################################
 
@@ -35,3 +36,16 @@ class FileInfo:
     is_duplicate: bool = False
     original_path: Optional[Path] = None
     path_metadata: Optional[dict] = None  # Metadata extracted from directory structure
+
+    # Device and inode. Two paths sharing both are one file on disk, by
+    # hardlink or APFS clone, so they are not two copies to reclaim.
+    dev: Optional[int] = None
+    inode: Optional[int] = None
+
+    # SHA-256 of the first 64 KB, the last 64 KB and the size, for files
+    # big enough to be worth sampling before a full read.
+    sample_hash: Optional[str] = None
+
+    # Where a symlink points. Set only for links, which are recorded and
+    # never followed or hashed.
+    link_target: Optional[str] = None

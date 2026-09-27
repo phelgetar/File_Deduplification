@@ -106,6 +106,7 @@ class PipelineResult:
     """What a run produced. Serialisable for the API and the job log."""
 
     files_scanned: int = 0
+    symlinks_recorded: int = 0
     files_hashed: int = 0
     unique_files: int = 0
     duplicate_files: int = 0
@@ -297,14 +298,27 @@ def run_pipeline(
 
     # --- scan ---
     p.stage_start(parallel.SCAN, "Scanning files")
+    symlinks = []
     files = scan_directory(
         str(config.source),
         filter_names=config.filter_names,
         max_files=config.max_files,
         allowed_extensions=config.allowed_extensions,
+        symlinks_out=symlinks,
     )
     result.files_scanned = len(files)
+    result.symlinks_recorded = len(symlinks)
     p.stage_end(f"{len(files):,} files matched")
+
+    # Symlinks are inventory, not content: recorded with their target and
+    # never followed or hashed. Following them read one Pictures library
+    # as 488 separate 44 GB objects.
+    if symlinks:
+        p.log(f"{len(symlinks):,} symlinks recorded as links, not followed")
+        if config.use_db:
+            from core.db import record_symlinks
+            written = record_symlinks(symlinks)
+            logger.debug("Recorded %d symlink(s) in the database", written)
     if cancelled():
         return _finish(result, started, cancelled=True), []
     if not files:

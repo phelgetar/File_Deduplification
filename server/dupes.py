@@ -513,6 +513,57 @@ def _invalidate_pending():
         _pending_cache.clear()
 
 
+def _verify_before_trash(paths):
+    """Re-read each file and confirm it still hashes to what we recorded.
+
+    The hash cache is keyed on path plus mtime, so a file rewritten with
+    its mtime preserved keeps a stale hash forever. Everything upstream
+    trusts that hash; this is the last point where being wrong is still
+    recoverable, and the only one where the cost of checking (one read
+    of a file we are about to move anyway) is obviously worth paying.
+
+    Returns (safe, rejected). A mismatch is skipped, never trashed, and
+    reported back so the count the user sees is the count acted on.
+    """
+    from core import parallel
+    from core.db import get_recorded_hashes
+    from core.hasher import CHUNK_SIZE
+    import hashlib
+
+    recorded = get_recorded_hashes(paths)
+
+    def _check(path):
+        want = recorded.get(path)
+        if not want or want in ("METADATA_ONLY", "SAMPLE_ONLY", "SYMLINK"):
+            # Never hashed in full, so there is nothing to re-confirm.
+            # These should not reach a delete anyway; say so rather than
+            # deleting on the strength of a comparison we never made.
+            return path, "no full hash on record"
+        try:
+            if os.path.islink(path):
+                return path, "is a symlink"
+            digest = hashlib.sha256()
+            with open(path, "rb") as handle:
+                while True:
+                    chunk = handle.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+        except OSError as e:
+            return path, f"could not re-read: {e}"
+        if digest.hexdigest() != want:
+            return path, "contents changed since it was scanned"
+        return path, None
+
+    results = list(parallel.map_stage(parallel.HASH, _check, paths))
+    safe = [path for path, why in results if why is None]
+    rejected = [{"path": path, "reason": why} for path, why in results if why]
+    if rejected:
+        logger.warning("Refusing to trash %d file(s) that no longer match "
+                       "their recorded hash", len(rejected))
+    return safe, rejected
+
+
 @router.post("/delete")
 def api_delete(req: DeleteRequest):
     """Move the non-kept copies of resolved groups to the Trash."""
@@ -535,8 +586,16 @@ def api_delete(req: DeleteRequest):
     from datetime import datetime
     from utils.trash import trash_many
 
+    # Confirm the bytes are still the bytes we judged before moving them.
+    safe_paths, rejected = _verify_before_trash(summary["paths"])
+    if not safe_paths:
+        return {"trashed": 0, "failed": 0, "bytes": 0,
+                "rejected": len(rejected), "rejections": rejected[:20],
+                "message": "Nothing was trashed: no candidate still matched "
+                           "the hash it was judged on."}
+
     batch_at = datetime.utcnow()
-    results = trash_many(summary["paths"])
+    results = trash_many(safe_paths)
     ok = [r for r in results if r.ok]
     failed = [{"path": r.path, "error": r.error} for r in results if not r.ok]
 
@@ -552,6 +611,8 @@ def api_delete(req: DeleteRequest):
         "bytes": summary["bytes"],
         "logged": logged,
         "protected_skipped": len(summary["protected"]),
+        "rejected": len(rejected),
+        "rejections": rejected[:20],
         "batch_at": batch_at.isoformat(),
     }
 

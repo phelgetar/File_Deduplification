@@ -26,7 +26,10 @@
 ###################################################################
 
 import hashlib
+import os
+import stat
 import logging
+from collections import defaultdict
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -40,6 +43,50 @@ CHUNK_SIZE = 65536
 # Defaults for parallel hashing; override via --workers / --batch-size
 DEFAULT_WORKERS = 4
 DEFAULT_BATCH_SIZE = 500
+
+
+# Files at or above this size get a cheap sample first. Below it the
+# whole file is roughly one or two reads anyway, so sampling would cost
+# an extra seek to save nothing.
+SAMPLE_THRESHOLD = 4 * 1024 * 1024        # 4 MB
+SAMPLE_EDGE = 65536                        # 64 KB from each end
+
+
+def sample_hash(path, size):
+    """SHA-256 of the first 64 KB, the last 64 KB and the size.
+
+    Two files differing at either end, or in length, cannot be
+    identical, so only files colliding here need the full read. The
+    size goes into the digest so a short file cannot collide with a
+    long one whose ends happen to match.
+
+    Returns None when the file is too small to be worth sampling, or
+    unreadable; callers fall back to a full hash.
+    """
+    if size < SAMPLE_THRESHOLD:
+        return None
+    digest = hashlib.sha256()
+    digest.update(str(size).encode())
+    try:
+        with open(path, "rb") as handle:
+            digest.update(handle.read(SAMPLE_EDGE))
+            if size > SAMPLE_EDGE * 2:
+                handle.seek(-SAMPLE_EDGE, os.SEEK_END)
+                digest.update(handle.read(SAMPLE_EDGE))
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
+def _walk_no_links(dir_path):
+    """Every regular file under dir_path, never crossing a symlink."""
+    for dirpath, dirnames, filenames in os.walk(dir_path, followlinks=False):
+        here = Path(dirpath)
+        dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
+        for name in filenames:
+            candidate = here / name
+            if not candidate.is_symlink() and candidate.is_file():
+                yield candidate
 
 
 def hash_directory(dir_path):
@@ -57,8 +104,23 @@ def hash_directory(dir_path):
     """
     sha256_hash = hashlib.sha256()
 
-    # Get all files in directory, sorted for deterministic ordering
-    all_files = sorted(dir_path.rglob("*"))
+    # Walk without following symlinks.
+    #
+    # rglob("*") follows them, so hashing a directory could leave that
+    # directory entirely. That is how 488 sandbox container links to one
+    # Pictures library were each read as a 44 GB object: 21.47 TB of the
+    # 25.77 TB that scan read. os.walk defaults to followlinks=False.
+    all_files = []
+    for dirpath, dirnames, filenames in os.walk(dir_path, followlinks=False):
+        here = Path(dirpath)
+        # Prune symlinked subdirectories too: os.walk lists them even
+        # though it will not descend, and we must not stat through them.
+        dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
+        for name in filenames:
+            candidate = here / name
+            if not candidate.is_symlink():
+                all_files.append(candidate)
+    all_files.sort()
 
     for file_path in all_files:
         # Skip directories themselves, only hash files
@@ -86,8 +148,86 @@ def hash_directory(dir_path):
 
     return sha256_hash.hexdigest()
 
+def _sample_seen_elsewhere(size, sample, path):
+    """Does the database already know another file with these ends?
+
+    Without this the optimisation is a correctness bug across runs: a
+    file that is the only one of its shape today gets no full hash, and
+    when its twin is scanned next month there is nothing to compare it
+    to. One indexed lookup (idx_files_sample_hash) buys that back.
+    """
+    try:
+        from core.db import sample_hash_exists
+        return sample_hash_exists(size, sample, str(path))
+    except Exception:
+        # Cannot prove it is unique, so do not skip the read.
+        return True
+
+
+def sample_prefilter(file_paths, workers, metadata_only_size=None,
+                     use_db=False):
+    """Paths big enough to sample that provably have no duplicate.
+
+    Returns {path: sample_hash}. A file whose first 64 KB, last 64 KB
+    and size match nothing else cannot be byte-identical to anything,
+    so reading the middle of it proves nothing. On a NAS that middle is
+    the entire cost.
+
+    Small files are left alone: below a few megabytes the whole file is
+    one or two reads anyway, and the extra seek would cost more than it
+    saves.
+    """
+    candidates = []
+    for path in file_paths:
+        try:
+            if path.is_symlink():
+                continue
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode):
+                continue
+            size = info.st_size
+        except OSError:
+            continue
+        if size < SAMPLE_THRESHOLD:
+            continue
+        if metadata_only_size is not None and size > metadata_only_size:
+            continue
+        candidates.append((path, size))
+
+    if not candidates:
+        return {}
+
+    def _one(item):
+        path, size = item
+        return path, size, sample_hash(path, size)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        sampled = list(pool.map(_one, candidates))
+
+    groups = defaultdict(list)
+    for path, size, digest in sampled:
+        if digest:
+            groups[(size, digest)].append(path)
+
+    unique = {}
+    for (size, digest), members in groups.items():
+        if len(members) != 1:
+            continue
+        if use_db and _sample_seen_elsewhere(size, digest, members[0]):
+            continue
+        unique[members[0]] = digest
+
+    if unique:
+        saved = sum(p.lstat().st_size for p in unique if p.exists())
+        logging.info(f"🔎 {len(unique):,} large files are unique by their first "
+                     f"and last 64 KB, so the full read is unnecessary "
+                     f"({saved / 1e9:.1f} GB not read)")
+    return unique
+
+
 def generate_hashes(file_paths, use_db=False, metadata_only_size=None,
-                    workers=DEFAULT_WORKERS, batch_size=DEFAULT_BATCH_SIZE):
+                    workers=DEFAULT_WORKERS, batch_size=DEFAULT_BATCH_SIZE,
+                    sample_first=True):
     """
     Hash files in parallel batches.
 
@@ -109,13 +249,26 @@ def generate_hashes(file_paths, use_db=False, metadata_only_size=None,
     if use_db:
         from core.db import cache_file_entry, get_cached_hash
 
+    # Two-tier hashing: sample the ends of every large file first, and
+    # skip the full read for those that already prove unique.
+    sample_unique = {}
+    if sample_first and file_paths:
+        try:
+            sample_unique = sample_prefilter(file_paths, workers,
+                                             metadata_only_size, use_db)
+        except Exception as e:
+            logging.warning(f"⚠️ Sample prefilter failed, hashing everything "
+                            f"in full: {e}")
+            sample_unique = {}
+
     def process_one(path):
         try:
             is_directory = path.is_dir()
 
             if is_directory:
                 # Atomic package (.app, .pkg, ...) — hash entire directory
-                file_size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+                # Same reason as hash_directory: never size through a link.
+                file_size = sum(f.stat().st_size for f in _walk_no_links(path))
                 # Drop microseconds: MySQL DATETIME truncates them, which would
                 # break the mtime equality check on cache lookups
                 mtime = datetime.fromtimestamp(path.stat().st_mtime).replace(microsecond=0)
@@ -127,9 +280,17 @@ def generate_hashes(file_paths, use_db=False, metadata_only_size=None,
                     logging.debug(f"    📦 Hashing atomic package: {path.name}")
                     sha256 = hash_directory(path)
                 from_cache = False
+                dev = inode = None
+                sample = None
             else:
-                stat_info = path.stat()
+                # lstat, not stat: the scanner already excluded symlinks,
+                # and lstat cannot be tricked into describing a target.
+                stat_info = path.lstat()
                 file_size = stat_info.st_size
+                # Device + inode. Two paths sharing both are one file on
+                # disk (hardlink, or an APFS clone), so they are not two
+                # copies and deleting one reclaims nothing.
+                dev, inode = stat_info.st_dev, stat_info.st_ino
                 mtime = datetime.fromtimestamp(stat_info.st_mtime).replace(microsecond=0)
                 is_metadata_only = metadata_only_size is not None and file_size > metadata_only_size
 
@@ -147,10 +308,18 @@ def generate_hashes(file_paths, use_db=False, metadata_only_size=None,
                     except Exception as db_err:
                         logging.debug(f"    Cache lookup failed for {path.name}: {db_err}")
 
+                sample = None
                 if sha256 is None:
                     if is_metadata_only:
                         sha256 = "METADATA_ONLY"
+                    elif path in sample_unique:
+                        # Nothing else shares this file's ends and length,
+                        # so it cannot be byte-identical to anything and
+                        # the middle need never be read.
+                        sample = sample_unique[path]
+                        sha256 = "SAMPLE_ONLY"
                     else:
+                        sample = sample_hash(path, file_size)
                         sha256_hash = hashlib.sha256()
                         with open(path, "rb") as f:
                             while True:
@@ -163,12 +332,16 @@ def generate_hashes(file_paths, use_db=False, metadata_only_size=None,
             path_metadata = extract_path_metadata(path)
             file_info = FileInfo(path=path, size=file_size, hash=sha256,
                                  path_metadata=path_metadata)
+            file_info.dev = dev
+            file_info.inode = inode
+            file_info.sample_hash = sample
 
             # Persist immediately so an interrupted run loses nothing
             if use_db and not from_cache:
                 try:
                     cache_file_entry(path, file_size, mtime, sha256,
-                                     metadata_only=is_metadata_only)
+                                     metadata_only=is_metadata_only,
+                                     dev=dev, inode=inode, sample=sample)
                 except Exception as db_err:
                     logging.warning(f"    ⚠️ Failed to write to DB: {db_err}")
 

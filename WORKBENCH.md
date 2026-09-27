@@ -67,6 +67,40 @@ mid-run, execution refuses to start rather than move files it cannot record.
 
 ---
 
+## What counts as a duplicate
+
+Two files are duplicates when SHA-256 of their contents matches. Nothing else
+is compared: not the name, not the extension, not the modified date. A `.jpg`
+and a `.txt` holding the same bytes are duplicates.
+
+Four things are checked before the contents are, because each one is a case
+where identical bytes do not mean a redundant copy:
+
+1. **Symlinks** are recorded with their target and never followed. A link is
+   not a copy of what it points at. Every sandboxed app has
+   `~/Library/Containers/<id>/Data/Pictures` pointing at one library, and
+   following them read that library as 488 separate 44 GB objects, 21.47 TB
+   of a 25.77 TB scan.
+2. **Device and inode.** Two paths sharing both are one file on disk, by
+   hardlink or APFS clone. The relationship is recorded, but the second name
+   is never offered as reclaimable, because unlinking it frees nothing.
+3. **Zero-byte files** all share one hash. Emptiness is usually the point of
+   the file (`.gitkeep`, an empty `__init__.py`, a lock file), and deleting
+   them reclaims nothing.
+4. **Size and the first and last 64 KB**, for files above 4 MB. Anything
+   differing at either end cannot be identical, so the middle is never read.
+   A match here is a reason to read the whole file, never a verdict on its
+   own: files differing only in the middle share a sample, and both get a
+   full hash.
+
+At delete time every candidate is **re-read and compared to the hash it was
+judged on**. The hash cache is keyed on path plus mtime, so a file rewritten
+with its mtime preserved keeps a stale hash; this is the last point where
+being wrong is still recoverable. A mismatch is skipped and reported, never
+trashed.
+
+---
+
 ## Service status
 
 The Run screen opens with every service `start-services.sh` manages — MySQL,

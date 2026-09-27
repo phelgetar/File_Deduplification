@@ -136,7 +136,11 @@ that preserved.
 - **Atomic package detection** — `.app`, `.pkg`, `.framework` are treated as single units rather than descended into, which is 18–60× faster and keeps bundles intact when copied
 - **Resumable** — every hash commits immediately, so Ctrl+C is safe and re-running skips unchanged files
 - **Metadata-only mode** for large files, so a 4 GB video is recorded without being read end to end
-- Zero-byte files excluded from duplicate grouping — they all share one hash and are not redundant copies of each other
+- Zero-byte files excluded from duplicate grouping, since they all share one hash and are not redundant copies of each other
+- **Symlinks recorded, never followed.** A link is not a copy of what it points at. Following them read one Pictures library as 488 separate 44 GB objects
+- **Hardlinks and APFS clones recognised by `(device, inode)`.** Two names for one file are not two copies, and deleting one reclaims nothing
+- **Two-tier hashing.** Files above 4 MB are matched on their first 64 KB, last 64 KB and size first; only a collision earns the full read
+- **Re-read before trashing.** Contents are confirmed against the recorded hash at delete time, so a file rewritten since the scan is skipped rather than deleted
 
 **Classification**
 - Rule-based across 28 categories and 309 extensions, from one table
@@ -374,6 +378,7 @@ stops at five dollars of real token usage.
 |---|---|
 | `scripts/reclassify_files.py` | Re-derive categories for rows already in the database. **Classification is cached**: a file classified under an older ruleset keeps its stored category on re-runs, so a rules change only reaches existing rows through this. `--categories other data` to target, `--dry-run` first, `--skip-cloud` to leave Google Drive and Dropbox alone. A move into `other`/`unknown` is refused unless you pass `--allow-downgrade` — reclassifying a specific category into an unclassified one is a loss, not an improvement. |
 | `scripts/import_cli_runs.py` | Convert historical `dry_run_preview_*.json` files into job records the web UI can read. `--dry-run`, `--max-size-mb` and `--only` are there because the largest preview here is 5.5 GB and 6,992,105 rows. Imported plans are flagged `ruleset: historical` when they predate the current rules — they are a record of what was decided, not a proposal to act on. |
+| `scripts/purge_symlink_rows.py` | Remove inventory rows created before symlinks were skipped. A followed link was recorded as a 44 GB file once per link; this deletes those rows and any duplicate resolution only they produced. `--apply` to act, otherwise it reports. |
 | `scripts/debug_classification.py` | Ask why one specific file was classified the way it was. |
 | `scripts/generate_user_guide.py` | Rebuild `docs/USER_GUIDE.pdf`. Run after changing any CLI switch. |
 | `scripts/gen_changelog.py`, `scripts/bump_version.py` | Release plumbing; `make changelog`, `make bump`, `make release` wrap them. |
