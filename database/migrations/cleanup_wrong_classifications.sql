@@ -3,6 +3,16 @@
 -- ============================================================================
 -- Purpose: Remove incorrect "archive" classifications for image files
 -- Created: 2025-11-19
+-- Safety:  2026-10-03 - deletes wrapped in one transaction with a manual
+--          COMMIT/ROLLBACK decision point.
+--
+-- Run as an admin/owner account (e.g. jarheads_0231), NOT the app user.
+--
+-- HOW TO USE SAFELY: run this whole script, read the "after" verification
+-- counts at the bottom, then type COMMIT; to keep the changes or ROLLBACK;
+-- to undo them. Nothing is permanent until you COMMIT. All three DELETEs
+-- are in one transaction, so a failure partway through rolls back cleanly
+-- instead of leaving half-deleted state.
 -- ============================================================================
 
 -- Select the database
@@ -48,6 +58,11 @@ WHERE c.category = 'archive'
     f.path LIKE '%.tif' OR
     f.path LIKE '%.webp'
   );
+
+-- ============================================================================
+-- Begin transaction: all deletes below are atomic until you COMMIT.
+-- ============================================================================
+START TRANSACTION;
 
 -- Delete wrong classifications for image files
 DELETE c FROM classifications c
@@ -102,7 +117,8 @@ WHERE ft.tag = 'Archives'
     f.path LIKE '%.webp'
   );
 
--- Verify cleanup
+-- Verify cleanup (still inside the open transaction, so these counts
+-- reflect the pending deletes before you decide to keep them).
 SELECT 'Remaining wrong classifications:' AS status;
 SELECT
     COUNT(*) AS remaining_wrong_classifications
@@ -142,3 +158,10 @@ WHERE (
   )
 ORDER BY f.path
 LIMIT 10;
+
+-- ============================================================================
+-- DECISION POINT: review the verification counts above, then run ONE of:
+--   COMMIT;     -- keep the deletions (makes them permanent)
+--   ROLLBACK;   -- undo everything in this transaction
+-- Until you run one of these, the changes are held and not yet saved.
+-- ============================================================================
