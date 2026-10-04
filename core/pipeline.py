@@ -580,15 +580,26 @@ def _stage_execute(config, plan, p, result) -> None:
     from core.executor import execute_plan
 
     if config.use_db:
-        from core.db import is_db_down
+        from core.db import describe_db_failures, is_db_down
         if is_db_down():
-            # Same refusal core/main.py has always made: moving files
-            # without an operations row makes the run unauditable.
+            # Moving files without an operations row makes the run
+            # unauditable, so this refusal stands. What changed is that
+            # it now says WHAT failed: the breaker trips on any three
+            # consecutive errors, not only a lost connection, and the
+            # old wording asserted a cause nobody had checked. The
+            # reasons were logger.warning calls that scrolled past.
+            reasons = describe_db_failures()
+            detail = ("\n  ".join([""] + reasons) if reasons
+                      else " (no detail recorded)")
             raise RuntimeError(
-                "The database connection was lost during this run (circuit "
-                "breaker tripped). Refusing to move files without operation "
-                "logging. Restore the database and re-run — hashes completed "
-                "before the outage are cached, so the re-run will be fast.")
+                "Refusing to move files: the database stopped answering "
+                "during this run, so the operations log would be "
+                "incomplete and the moves unauditable."
+                f"\n\nWhat failed:{detail}\n\n"
+                "Hashes completed before the failure are cached, so a "
+                "re-run resumes quickly. The breaker also retries by "
+                "itself once a minute, so a brief outage no longer "
+                "disables the rest of the run.")
 
     p.stage_start("execute", "Applying changes", total=len(plan))
     execute_plan(plan, write_metadata=config.write_metadata, use_db=config.use_db)

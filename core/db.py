@@ -27,8 +27,10 @@
 import functools
 import os
 import threading
+from collections import deque
+import time
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import quote_plus
 from sqlalchemy import (create_engine, Column, Integer, BigInteger, String,
                         Boolean, DateTime, Text, Enum, Float, ForeignKey)
@@ -68,7 +70,17 @@ logger.debug(f"Database URL: {safe_url}")
 
 # Set up engine and session. connect_timeout bounds how long a call can
 # stall when the server is unreachable (default would be ~10s per attempt).
+# pool_pre_ping issues a cheap SELECT 1 before handing out a pooled
+# connection, so one that died while idle is replaced transparently
+# instead of raising. Without it, a dropped connection surfaces as a
+# query failure, and three of those in a row trip the breaker and
+# refuse --execute for the rest of the run.
+#
+# pool_recycle retires connections before MySQL's own wait_timeout can,
+# which is the usual way they go stale in the first place.
 engine = create_engine(DATABASE_URL, echo=False,
+                       pool_pre_ping=True,
+                       pool_recycle=1800,
                        connect_args={"connect_timeout": 5})
 Session = sessionmaker(bind=engine)
 Base = declarative_base()
@@ -84,36 +96,92 @@ Base = declarative_base()
 
 DB_FAILURE_THRESHOLD = 3
 
-_breaker = {"failures": 0, "down": False}
+# How long the breaker stays open before it will try one more call. A
+# run can be an hour long; permanently disabling persistence because of
+# a blip in the first minute, and then refusing --execute at the end,
+# costs far more than one retry.
+DB_RETRY_AFTER_SECONDS = 60
+
+_breaker = {"failures": 0, "down": False, "opened_at": 0.0}
 _breaker_lock = threading.Lock()
+
+# What actually went wrong, kept so the refusal can say. Before this the
+# reasons were logger.warning calls that scrolled past, and the refusal
+# asserted "the connection was lost" without knowing that.
+_failure_log = deque(maxlen=20)
 
 
 def is_db_down():
-    """True once the circuit breaker has tripped for this run."""
-    return _breaker["down"]
+    """True while the breaker is open and not yet due for a retry."""
+    with _breaker_lock:
+        if not _breaker["down"]:
+            return False
+        if time.time() - _breaker["opened_at"] >= DB_RETRY_AFTER_SECONDS:
+            # Half-open: let the next call through. If it works the
+            # breaker closes; if it fails we are back here in a minute.
+            return False
+        return True
+
+
+def db_failures():
+    """The recorded failures, newest last. For reporting, not control."""
+    return list(_failure_log)
+
+
+def describe_db_failures(limit=3):
+    """One line per distinct recent failure, for a human."""
+    seen, out = set(), []
+    for entry in reversed(_failure_log):
+        key = (entry["operation"], entry["error"][:120])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(f"{entry['operation']}: {entry['error'][:200]}")
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _record_success():
     with _breaker_lock:
+        recovered = _breaker["down"]
         _breaker["failures"] = 0
+        _breaker["down"] = False
+    if recovered:
+        logger.warning("🔌 Database is answering again; persistence resumed. "
+                       "Anything attempted while it was down was not saved.")
 
 
 def _record_failure(func_name, error):
     with _breaker_lock:
         _breaker["failures"] += 1
+        _failure_log.append({
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "operation": func_name,
+            "error": f"{type(error).__name__}: {error}",
+        })
         tripped = (not _breaker["down"]
                    and _breaker["failures"] >= DB_FAILURE_THRESHOLD)
         if tripped:
             _breaker["down"] = True
+            _breaker["opened_at"] = time.time()
+        elif _breaker["down"]:
+            # A probe after the cooldown failed. Re-arm the clock, or
+            # every subsequent call probes and there is no backoff left.
+            _breaker["opened_at"] = time.time()
     if tripped:
         logger.error(
             f"🔌 Database circuit breaker tripped after {DB_FAILURE_THRESHOLD} "
-            f"consecutive failures (last: {func_name}: {error}). Continuing "
-            f"WITHOUT persistence — no hashes, classifications, or tags will "
-            f"be saved from this point, and this run will not be resumable "
-            f"past here. File execution (--execute) will be refused.")
+            f"consecutive failures. Continuing WITHOUT persistence — no "
+            f"hashes, classifications, or tags will be saved from this point, "
+            f"and this run will not be resumable past here. File execution "
+            f"(--execute) will be refused. Retrying in "
+            f"{DB_RETRY_AFTER_SECONDS}s. Reasons:")
+        for line in describe_db_failures():
+            logger.error(f"    {line}")
     else:
-        logger.warning(f"⚠️ DB operation {func_name} failed: {error}")
+        logger.warning(f"⚠️ DB operation {func_name} failed: "
+                       f"{type(error).__name__}: {error}")
 
 
 def _db_guard(default=None):
@@ -122,7 +190,11 @@ def _db_guard(default=None):
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
-            if _breaker["down"]:
+            # Via is_db_down(), not the raw flag: once the cooldown has
+            # elapsed that returns False so exactly one call gets through
+            # to probe. Reading the flag directly made the breaker
+            # permanent for the life of the process.
+            if is_db_down():
                 return default
             try:
                 result = fn(*args, **kwargs)
