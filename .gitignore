@@ -24,3 +24,8 @@ dry_run_preview_*.txt
 
 # Per-job artifacts written by server/jobs.py (plans, duplicates, results)
 .workbench/
+
+# .env backups. A timestamped copy of .env was swept into a commit by
+# `git add -A` and rejected by push protection for carrying live keys.
+.env.bak*
+.env.*.bak

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Optional
 from datetime import datetime
 import logging
+import math
 
 from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Text, Float, ForeignKey, DECIMAL
 from sqlalchemy.orm import relationship
@@ -148,6 +149,20 @@ class ImageAnalysisError(Base):
 
 # --- Database Functions ---
 
+def _scrub_non_finite(metadata) -> list:
+    """Replace NaN and Infinity on a metadata object with None.
+
+    Returns the names of the fields it changed, so the caller can say
+    what was dropped rather than silently losing it.
+    """
+    dropped = []
+    for name, value in vars(metadata).items():
+        if isinstance(value, float) and not math.isfinite(value):
+            setattr(metadata, name, None)
+            dropped.append(name)
+    return dropped
+
+
 def save_image_metadata(file_path: Path, metadata: ImageMetadata) -> bool:
     """
     Save image metadata to database.
@@ -174,6 +189,19 @@ def save_image_metadata(file_path: Path, metadata: ImageMetadata) -> bool:
                 # Delete existing to replace (cascade will handle keywords and exif_raw)
                 session.delete(existing)
                 session.commit()
+
+            # No non-finite float may reach MySQL, which rejects NaN and
+            # Infinity and fails the whole INSERT. GPS was the one that
+            # bit, but any EXIF rational with a zero denominator lands
+            # here the same way: f-number, focal length, exposure bias,
+            # altitude, DPI. Scrubbed once, centrally, rather than
+            # guarded field by field.
+            dropped = _scrub_non_finite(metadata)
+            if dropped:
+                logger.warning(
+                    f"⚠️ {file_path.name}: dropped non-finite EXIF value(s) "
+                    f"for {', '.join(dropped)}. MySQL rejects NaN, and the "
+                    f"whole row would otherwise fail over one bad field.")
 
             # Create new metadata record
             db_metadata = ImageMetadataDB(

@@ -32,6 +32,7 @@ from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
+import math
 import hashlib
 
 # Image processing libraries
@@ -398,6 +399,14 @@ class ImageAnalyzer:
             s = float(value[2])
 
             degrees = d + (m / 60.0) + (s / 3600.0)
+
+            # A camera that writes GPS tags it never populated stores
+            # them as the rational 0/0, which evaluates to NaN. MySQL
+            # rejects NaN outright ("nan can not be used with MySQL"),
+            # so every photo from one trail cam failed to save any
+            # metadata at all over a coordinate it did not have.
+            if not math.isfinite(degrees):
+                return None
 
             if ref in ['S', 'W']:
                 degrees = -degrees
